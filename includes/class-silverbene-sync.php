@@ -101,11 +101,11 @@ class Silverbene_Sync {
             return false;
         }
 
-        $name        = $this->extract_value( $product_data, array( 'name', 'title', 'product_name' ) );
-        $description = $this->extract_value( $product_data, array( 'description', 'desc', 'product_description' ) );
-        $short_desc  = $this->extract_value( $product_data, array( 'short_description', 'short_desc' ) );
-        $price       = $this->extract_value( $product_data, array( 'price', 'regular_price', 'selling_price' ), 0 );
-        $stock       = $this->extract_value( $product_data, array( 'stock', 'stock_quantity', 'quantity', 'inventory' ), null );
+        $name        = $this->extract_value( $product_data, array( 'name', 'title', 'product_name', 'goods_name', 'product_title' ) );
+        $description = $this->extract_value( $product_data, array( 'description', 'desc', 'detail', 'content', 'product_description', 'product_detail', 'product_content', 'goods_desc' ) );
+        $short_desc  = $this->extract_value( $product_data, array( 'short_description', 'short_desc', 'summary', 'brief' ) );
+        $price       = $this->extract_value( $product_data, array( 'price', 'regular_price', 'selling_price', 'sale_price', 'shop_price', 'market_price' ), 0 );
+        $stock       = $this->extract_value( $product_data, array( 'stock', 'stock_quantity', 'quantity', 'inventory', 'stock_qty', 'qty', 'real_qty', 'option_qty' ), null );
         $weight      = $this->extract_value( $product_data, array( 'weight' ), null );
         $length      = $this->extract_value( $product_data, array( 'length' ), null );
         $width       = $this->extract_value( $product_data, array( 'width' ), null );
@@ -319,7 +319,7 @@ class Silverbene_Sync {
      * @param bool $is_new Whether the product is newly created.
      */
     private function assign_images( $product_id, $product_data, $is_new ) {
-        $images = $this->extract_value( $product_data, array( 'images', 'product_images', 'gallery' ), array() );
+        $images = $this->extract_value( $product_data, array( 'images', 'product_images', 'gallery', 'image_urls', 'image_list', 'img_urls', 'pictures', 'photos', 'thumb' ), array() );
 
         if ( empty( $images ) ) {
             return;
