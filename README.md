@@ -42,7 +42,7 @@ Setelah plugin aktif, lakukan konfigurasi kredensial dan sinkronisasi:
 1. Masuk ke menu **Silverbene API** yang muncul di sidebar admin WordPress.
 2. Pada tab **Kredensial API**, isi data berikut:
    - **URL API** – alamat dasar REST API Silverbene (contoh: `https://s.silverbene.com/api`).
-   - **API Key** – token yang diberikan oleh Silverbene.
+   - **API Key / Access Token** – token akses yang diberikan oleh Silverbene.
    - **API Secret** – opsional, isi jika Silverbene menyediakan secret tambahan.
 3. Pada bagian **Pengaturan Sinkronisasi**:
    - Centang **Aktifkan Sinkronisasi Otomatis** bila ingin penarikan berjalan berkala.
@@ -54,7 +54,8 @@ Setelah plugin aktif, lakukan konfigurasi kredensial dan sinkronisasi:
    - **Endpoint Produk** – path relatif untuk menarik data produk (default `/dropshipping/product_list`).
    - **Endpoint Produk per Tanggal** – path relatif untuk menarik produk menggunakan filter tanggal (default `/dropshipping/product_list_by_date`).
    - **Endpoint Stok Opsi** – path relatif untuk mengambil stok opsi produk (default `/dropshipping/option_qty`).
-   - **Endpoint Pesanan** – path relatif untuk mengirim pesanan (default `/orders`).
+   - **Endpoint Pesanan** – path relatif untuk mengirim pesanan (default `/dropshipping/create_order`).
+   - **Endpoint Metode Pengiriman** – path relatif untuk mengambil daftar metode pengiriman (default `/dropshipping/get_shipping_method`).
 5. Klik **Save Changes** di bagian bawah halaman.
 
 > **Catatan:** Setiap kali pengaturan disimpan, plugin otomatis memuat ulang konfigurasi dan mengatur ulang jadwal cron agar mengikuti interval terbaru.

@@ -244,8 +244,22 @@ class Silverbene_API {
             array(
                 'label_for' => 'orders_endpoint',
                 'type'      => 'text',
-                'placeholder' => '/orders',
+                'placeholder' => '/dropshipping/create_order',
                 'description' => __( 'Endpoint relatif untuk membuat pesanan di Silverbene.', 'silverbene-api-integration' ),
+            )
+        );
+
+        add_settings_field(
+            'shipping_methods_endpoint',
+            __( 'Endpoint Metode Pengiriman', 'silverbene-api-integration' ),
+            array( $this, 'render_text_field' ),
+            'silverbene-api',
+            'silverbene_api_endpoints_section',
+            array(
+                'label_for'   => 'shipping_methods_endpoint',
+                'type'        => 'text',
+                'placeholder' => '/dropshipping/get_shipping_method',
+                'description' => __( 'Endpoint relatif untuk mengambil daftar metode pengiriman.', 'silverbene-api-integration' ),
             )
         );
     }
@@ -269,7 +283,8 @@ class Silverbene_API {
         $output['products_endpoint']  = isset( $input['products_endpoint'] ) ? sanitize_text_field( $input['products_endpoint'] ) : '/dropshipping/product_list';
         $output['products_by_date_endpoint'] = isset( $input['products_by_date_endpoint'] ) ? sanitize_text_field( $input['products_by_date_endpoint'] ) : '/dropshipping/product_list_by_date';
         $output['option_qty_endpoint']       = isset( $input['option_qty_endpoint'] ) ? sanitize_text_field( $input['option_qty_endpoint'] ) : '/dropshipping/option_qty';
-        $output['orders_endpoint']    = isset( $input['orders_endpoint'] ) ? sanitize_text_field( $input['orders_endpoint'] ) : '/orders';
+        $output['orders_endpoint']    = isset( $input['orders_endpoint'] ) ? sanitize_text_field( $input['orders_endpoint'] ) : '/dropshipping/create_order';
+        $output['shipping_methods_endpoint'] = isset( $input['shipping_methods_endpoint'] ) ? sanitize_text_field( $input['shipping_methods_endpoint'] ) : '/dropshipping/get_shipping_method';
 
         return $output;
     }
