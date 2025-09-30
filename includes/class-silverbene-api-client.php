@@ -62,16 +62,85 @@ class Silverbene_API_Client {
      * Create an order on Silverbene.
      *
      * @param array $order_data Formatted order payload.
-     * @return array|
+     *
+     * @return array|null
      */
     public function create_order( $order_data ) {
-        $endpoint = $this->get_setting( 'orders_endpoint', '/orders' );
-        return $this->request( 'POST', $endpoint, array(
-            'body' => wp_json_encode( $order_data ),
+        $token = $this->get_setting( 'api_key', '' );
+        if ( empty( $token ) ) {
+            $this->log_error( 'API token is missing, cannot create order.' );
+            return null;
+        }
+
+        if ( empty( $order_data['token'] ) ) {
+            $order_data['token'] = $token;
+        }
+
+        $endpoint = $this->get_setting( 'orders_endpoint', '/dropshipping/create_order' );
+
+        $response = $this->request( 'POST', $endpoint, array(
+            'body'    => wp_json_encode( $order_data ),
             'headers' => array(
                 'Content-Type' => 'application/json',
             ),
         ) );
+
+        if ( empty( $response ) ) {
+            return null;
+        }
+
+        if ( isset( $response['code'] ) && 0 !== intval( $response['code'] ) ) {
+            $this->log_error( 'Create order request returned non zero status code', $response );
+        }
+
+        return $response;
+    }
+
+    /**
+     * Retrieve available shipping methods for a country.
+     *
+     * @param string $country_id Two letter ISO 3166-1 alpha-2 country code.
+     *
+     * @return array
+     */
+    public function get_shipping_methods( $country_id ) {
+        $country_id = strtoupper( trim( $country_id ) );
+
+        if ( empty( $country_id ) ) {
+            return array();
+        }
+
+        $token = $this->get_setting( 'api_key', '' );
+        if ( empty( $token ) ) {
+            $this->log_error( 'API token is missing, cannot fetch shipping methods.' );
+            return array();
+        }
+
+        $endpoint = $this->get_setting( 'shipping_methods_endpoint', '/dropshipping/get_shipping_method' );
+
+        $response = $this->request(
+            'GET',
+            $endpoint,
+            array(
+                'query' => array(
+                    'token'      => $token,
+                    'country_id' => $country_id,
+                ),
+            )
+        );
+
+        if ( empty( $response ) ) {
+            return array();
+        }
+
+        if ( isset( $response['code'] ) && 0 !== intval( $response['code'] ) ) {
+            $this->log_error( 'Shipping method request returned non zero status code', $response );
+            return array();
+        }
+
+        $data = $this->unwrap_data_container( $response );
+
+        return is_array( $data ) ? $data : array();
     }
 
     /**
@@ -193,7 +262,8 @@ class Silverbene_API_Client {
             'products_endpoint'         => '/dropshipping/product_list',
             'products_by_date_endpoint' => '/dropshipping/product_list_by_date',
             'option_qty_endpoint'       => '/dropshipping/option_qty',
-            'orders_endpoint'    => '/orders',
+            'orders_endpoint'           => '/dropshipping/create_order',
+            'shipping_methods_endpoint' => '/dropshipping/get_shipping_method',
             'sync_enabled'       => false,
             'sync_interval'      => 'hourly',
             'default_category'   => '',
