@@ -41,7 +41,7 @@ Setelah plugin aktif, lakukan konfigurasi kredensial dan sinkronisasi:
 
 1. Masuk ke menu **Silverbene API** yang muncul di sidebar admin WordPress.
 2. Pada tab **Kredensial API**, isi data berikut:
-   - **URL API** – alamat dasar REST API Silverbene (contoh: `https://api.silverbene.com/v1`).
+   - **URL API** – alamat dasar REST API Silverbene (contoh: `https://s.silverbene.com/api`).
    - **API Key** – token yang diberikan oleh Silverbene.
    - **API Secret** – opsional, isi jika Silverbene menyediakan secret tambahan.
 3. Pada bagian **Pengaturan Sinkronisasi**:
@@ -51,7 +51,9 @@ Setelah plugin aktif, lakukan konfigurasi kredensial dan sinkronisasi:
    - Tentukan **Tipe Penyesuaian Harga** (`Persentase`, `Nominal Tetap`, atau `Tanpa Penyesuaian`).
    - Masukkan **Nilai Penyesuaian Harga** sesuai tipe yang dipilih.
 4. Pada bagian **Endpoint Kustom**:
-   - **Endpoint Produk** – path relatif untuk menarik data produk (default `/products`).
+   - **Endpoint Produk** – path relatif untuk menarik data produk (default `/dropshipping/product_list`).
+   - **Endpoint Produk per Tanggal** – path relatif untuk menarik produk menggunakan filter tanggal (default `/dropshipping/product_list_by_date`).
+   - **Endpoint Stok Opsi** – path relatif untuk mengambil stok opsi produk (default `/dropshipping/option_qty`).
    - **Endpoint Pesanan** – path relatif untuk mengirim pesanan (default `/orders`).
 5. Klik **Save Changes** di bagian bawah halaman.
 

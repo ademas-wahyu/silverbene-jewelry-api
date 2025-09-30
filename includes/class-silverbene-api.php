@@ -202,8 +202,36 @@ class Silverbene_API {
             array(
                 'label_for' => 'products_endpoint',
                 'type'      => 'text',
-                'placeholder' => '/products',
+                'placeholder' => '/dropshipping/product_list',
                 'description' => __( 'Endpoint relatif untuk mengambil data produk.', 'silverbene-api-integration' ),
+            )
+        );
+
+        add_settings_field(
+            'products_by_date_endpoint',
+            __( 'Endpoint Produk per Tanggal', 'silverbene-api-integration' ),
+            array( $this, 'render_text_field' ),
+            'silverbene-api',
+            'silverbene_api_endpoints_section',
+            array(
+                'label_for'   => 'products_by_date_endpoint',
+                'type'        => 'text',
+                'placeholder' => '/dropshipping/product_list_by_date',
+                'description' => __( 'Endpoint relatif untuk mengambil produk berdasarkan rentang tanggal.', 'silverbene-api-integration' ),
+            )
+        );
+
+        add_settings_field(
+            'option_qty_endpoint',
+            __( 'Endpoint Stok Opsi', 'silverbene-api-integration' ),
+            array( $this, 'render_text_field' ),
+            'silverbene-api',
+            'silverbene_api_endpoints_section',
+            array(
+                'label_for'   => 'option_qty_endpoint',
+                'type'        => 'text',
+                'placeholder' => '/dropshipping/option_qty',
+                'description' => __( 'Endpoint relatif untuk mengambil stok tiap opsi produk.', 'silverbene-api-integration' ),
             )
         );
 
@@ -238,7 +266,9 @@ class Silverbene_API {
         $output['default_category']   = isset( $input['default_category'] ) ? sanitize_text_field( $input['default_category'] ) : '';
         $output['price_markup_type']  = isset( $input['price_markup_type'] ) ? sanitize_key( $input['price_markup_type'] ) : 'none';
         $output['price_markup_value'] = isset( $input['price_markup_value'] ) ? floatval( $input['price_markup_value'] ) : 0;
-        $output['products_endpoint']  = isset( $input['products_endpoint'] ) ? sanitize_text_field( $input['products_endpoint'] ) : '/products';
+        $output['products_endpoint']  = isset( $input['products_endpoint'] ) ? sanitize_text_field( $input['products_endpoint'] ) : '/dropshipping/product_list';
+        $output['products_by_date_endpoint'] = isset( $input['products_by_date_endpoint'] ) ? sanitize_text_field( $input['products_by_date_endpoint'] ) : '/dropshipping/product_list_by_date';
+        $output['option_qty_endpoint']       = isset( $input['option_qty_endpoint'] ) ? sanitize_text_field( $input['option_qty_endpoint'] ) : '/dropshipping/option_qty';
         $output['orders_endpoint']    = isset( $input['orders_endpoint'] ) ? sanitize_text_field( $input['orders_endpoint'] ) : '/orders';
 
         return $output;
