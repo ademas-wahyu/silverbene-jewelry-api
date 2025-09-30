@@ -39,10 +39,20 @@ class Silverbene_Sync {
         $imported = 0;
 
         do {
+            /**
+             * Note for Developer: The Silverbene API may time out on very large date ranges.
+             * For the initial import, you may need to sync in smaller batches (e.g., 3-6 months at a time)
+             * by adjusting the 'start_date' below.
+             * For regular daily/hourly syncs, the default of 30 days is safe.
+             */
+            $start_date = wp_date( 'Y-m-d', strtotime( '-1 year' ) );
+
             $products = $this->client->get_products(
                 array(
-                    'page'     => $page,
-                    'per_page' => $per_page,
+                    'page'       => $page,
+                    'per_page'   => $per_page,
+                    'start_date' => $start_date,
+                    'end_date'   => wp_date( 'Y-m-d' ),
                 )
             );
 
@@ -105,6 +115,12 @@ class Silverbene_Sync {
         $description = $this->extract_value( $product_data, array( 'description', 'desc', 'detail', 'content', 'product_description', 'product_detail', 'product_content', 'goods_desc' ) );
         $short_desc  = $this->extract_value( $product_data, array( 'short_description', 'short_desc', 'summary', 'brief' ) );
         $price       = $this->extract_value( $product_data, array( 'price', 'regular_price', 'selling_price', 'sale_price', 'shop_price', 'market_price' ), 0 );
+
+        // Fallback to option price if top-level price is not available
+        if ( empty( $price ) && ! empty( $product_data['option'][0]['price'] ) ) {
+            $price = $product_data['option'][0]['price'];
+        }
+
         $stock       = $this->extract_value( $product_data, array( 'stock', 'stock_quantity', 'quantity', 'inventory', 'stock_qty', 'qty', 'real_qty', 'option_qty' ), null );
         $weight      = $this->extract_value( $product_data, array( 'weight' ), null );
         $length      = $this->extract_value( $product_data, array( 'length' ), null );

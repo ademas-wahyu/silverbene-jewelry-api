@@ -271,20 +271,41 @@ class Silverbene_API {
      * @return array
      */
     public function sanitize_settings( $input ) {
-        $output = array();
-        $output['api_url']            = isset( $input['api_url'] ) ? esc_url_raw( $input['api_url'] ) : '';
-        $output['api_key']            = isset( $input['api_key'] ) ? sanitize_text_field( $input['api_key'] ) : '';
-        $output['api_secret']         = isset( $input['api_secret'] ) ? sanitize_text_field( $input['api_secret'] ) : '';
+        $output = get_option( SILVERBENE_API_SETTINGS_OPTION, array() );
+
+        if ( isset( $input['api_url'] ) ) {
+            $output['api_url'] = esc_url_raw( trim( $input['api_url'] ) );
+        }
+
+        // Hanya perbarui kunci API jika ada nilai baru yang dimasukkan.
+        if ( ! empty( $input['api_key'] ) ) {
+            $output['api_key'] = sanitize_text_field( $input['api_key'] );
+        }
+
+        // Hanya perbarui secret API jika ada nilai baru yang dimasukkan.
+        if ( ! empty( $input['api_secret'] ) ) {
+            $output['api_secret'] = sanitize_text_field( $input['api_secret'] );
+        }
+
         $output['sync_enabled']       = ! empty( $input['sync_enabled'] );
         $output['sync_interval']      = isset( $input['sync_interval'] ) ? sanitize_key( $input['sync_interval'] ) : 'hourly';
         $output['default_category']   = isset( $input['default_category'] ) ? sanitize_text_field( $input['default_category'] ) : '';
         $output['price_markup_type']  = isset( $input['price_markup_type'] ) ? sanitize_key( $input['price_markup_type'] ) : 'none';
         $output['price_markup_value'] = isset( $input['price_markup_value'] ) ? floatval( $input['price_markup_value'] ) : 0;
-        $output['products_endpoint']  = isset( $input['products_endpoint'] ) ? sanitize_text_field( $input['products_endpoint'] ) : '/dropshipping/product_list';
-        $output['products_by_date_endpoint'] = isset( $input['products_by_date_endpoint'] ) ? sanitize_text_field( $input['products_by_date_endpoint'] ) : '/dropshipping/product_list_by_date';
-        $output['option_qty_endpoint']       = isset( $input['option_qty_endpoint'] ) ? sanitize_text_field( $input['option_qty_endpoint'] ) : '/dropshipping/option_qty';
-        $output['orders_endpoint']    = isset( $input['orders_endpoint'] ) ? sanitize_text_field( $input['orders_endpoint'] ) : '/dropshipping/create_order';
-        $output['shipping_methods_endpoint'] = isset( $input['shipping_methods_endpoint'] ) ? sanitize_text_field( $input['shipping_methods_endpoint'] ) : '/dropshipping/get_shipping_method';
+
+        $endpoints = array(
+            'products_endpoint',
+            'products_by_date_endpoint',
+            'option_qty_endpoint',
+            'orders_endpoint',
+            'shipping_methods_endpoint',
+        );
+
+        foreach ( $endpoints as $endpoint ) {
+            if ( ! empty( $input[ $endpoint ] ) ) {
+                $output[ $endpoint ] = sanitize_text_field( trim( $input[ $endpoint ] ) );
+            }
+        }
 
         return $output;
     }

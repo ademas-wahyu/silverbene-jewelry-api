@@ -208,10 +208,7 @@ class Silverbene_API_Client {
      * @return array
      */
     public function get_settings() {
-        if ( empty( $this->settings ) ) {
-            $this->settings = $this->parse_settings( get_option( 'silverbene_api_settings', array() ) );
-        }
-
+        $this->settings = $this->parse_settings( get_option( 'silverbene_api_settings', array() ) );
         return $this->settings;
     }
 
