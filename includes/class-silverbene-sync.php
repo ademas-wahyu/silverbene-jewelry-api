@@ -180,17 +180,22 @@ class Silverbene_Sync {
     /**
      * Apply markup rules defined in settings.
      *
+     * Calculation steps:
+     * 1. Sanitize the base price from the API and clamp it to zero or greater.
+     * 2. Add an optional pre-markup shipping fee (also clamped to zero or greater).
+     * 3. Apply the configured markup type (percentage or fixed) to the subtotal.
+     *
      * @param float $base_price Base price from API.
      * @param array $settings   Plugin settings.
      *
      * @return float
      */
     private function apply_markup( $base_price, $settings ) {
-        $base_price = max( floatval( $base_price ), 0 );
+        $base_price   = max( floatval( $base_price ), 0 );
         $shipping_fee = isset( $settings['pre_markup_shipping_fee'] ) ? max( 0, floatval( $settings['pre_markup_shipping_fee'] ) ) : 0;
-        $base_price += $shipping_fee;
+        $subtotal     = $base_price + $shipping_fee;
 
-        if ( $base_price <= 0 ) {
+        if ( $subtotal <= 0 ) {
             return 0;
         }
 
@@ -198,12 +203,12 @@ class Silverbene_Sync {
         $value = isset( $settings['price_markup_value'] ) ? floatval( $settings['price_markup_value'] ) : 0;
 
         if ( 'percentage' === $type ) {
-            $base_price += $base_price * ( $value / 100 );
+            $subtotal += $subtotal * ( $value / 100 );
         } elseif ( 'fixed' === $type ) {
-            $base_price += $value;
+            $subtotal += $value;
         }
 
-        return max( $base_price, 0 );
+        return max( $subtotal, 0 );
     }
 
     /**
