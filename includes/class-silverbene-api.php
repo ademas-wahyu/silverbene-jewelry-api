@@ -173,6 +173,20 @@ class Silverbene_API {
         );
 
         add_settings_field(
+            'pre_markup_shipping_fee',
+            __( 'Biaya Pengiriman Pra-Markup', 'silverbene-api-integration' ),
+            array( $this, 'render_number_field' ),
+            'silverbene-api',
+            'silverbene_api_sync_section',
+            array(
+                'label_for'   => 'pre_markup_shipping_fee',
+                'min'         => 0,
+                'step'        => '0.01',
+                'description' => __( 'Nilai ini akan dijumlahkan ke harga dasar sebelum penyesuaian markup dihitung.', 'silverbene-api-integration' ),
+            )
+        );
+
+        add_settings_field(
             'price_markup_value',
             __( 'Nilai Penyesuaian Harga', 'silverbene-api-integration' ),
             array( $this, 'render_number_field' ),
@@ -292,6 +306,7 @@ class Silverbene_API {
         $output['default_category']   = isset( $input['default_category'] ) ? sanitize_text_field( $input['default_category'] ) : '';
         $output['price_markup_type']  = isset( $input['price_markup_type'] ) ? sanitize_key( $input['price_markup_type'] ) : 'none';
         $output['price_markup_value'] = isset( $input['price_markup_value'] ) ? floatval( $input['price_markup_value'] ) : 0;
+        $output['pre_markup_shipping_fee'] = isset( $input['pre_markup_shipping_fee'] ) ? max( 0, floatval( $input['pre_markup_shipping_fee'] ) ) : 0;
 
         $endpoints = array(
             'products_endpoint',

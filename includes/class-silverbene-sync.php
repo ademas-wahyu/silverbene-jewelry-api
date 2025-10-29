@@ -186,9 +186,12 @@ class Silverbene_Sync {
      * @return float
      */
     private function apply_markup( $base_price, $settings ) {
-        $base_price = floatval( $base_price );
+        $base_price = max( floatval( $base_price ), 0 );
+        $shipping_fee = isset( $settings['pre_markup_shipping_fee'] ) ? max( 0, floatval( $settings['pre_markup_shipping_fee'] ) ) : 0;
+        $base_price += $shipping_fee;
+
         if ( $base_price <= 0 ) {
-            return $base_price;
+            return 0;
         }
 
         $type  = isset( $settings['price_markup_type'] ) ? $settings['price_markup_type'] : 'none';
