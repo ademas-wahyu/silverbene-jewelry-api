@@ -266,6 +266,7 @@ class Silverbene_API_Client {
             'default_category'   => '',
             'price_markup_type'  => 'percentage',
             'price_markup_value' => 0,
+            'pre_markup_shipping_fee' => 0,
         ) );
     }
 
