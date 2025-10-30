@@ -53,8 +53,9 @@ class Silverbene_Sync
             $products = $this->client->get_products([
                 "page" => $page,
                 "per_page" => $per_page,
-                // 'start_date' => $start_date,
-                // 'end_date'   => wp_date( 'Y-m-d' ),
+                "is_really_stock" => 1,
+                "start_date" => "1970-01-01",
+                "end_date" => wp_date("Y-m-d"),
             ]);
 
             if (empty($products)) {
@@ -62,7 +63,50 @@ class Silverbene_Sync
             }
 
             foreach ($products as $product_data) {
-                $product_id = $this->upsert_product($product_data, $settings);
+                $total_stock = $this->get_total_stock($product_data);
+
+                if ($total_stock <= 0) {
+                    $sku = $this->extract_value(
+                        $product_data,
+                        [
+                            "sku",
+                            "SKU",
+                            "product_sku",
+                            "id",
+                        ],
+                        "",
+                    );
+
+                    if (!empty($sku)) {
+                        $existing_product_id = wc_get_product_id_by_sku($sku);
+
+                        if ($existing_product_id) {
+                            if ($logger) {
+                                $logger->info(
+                                    sprintf(
+                                        "Menghapus produk dengan SKU %s karena stok habis.",
+                                        $sku,
+                                    ),
+                                    $context,
+                                );
+                            }
+
+                            if (function_exists("wc_delete_product")) {
+                                wc_delete_product($existing_product_id, true);
+                            } else {
+                                wp_trash_post($existing_product_id);
+                            }
+                        }
+                    }
+
+                    continue;
+                }
+
+                $product_id = $this->upsert_product(
+                    $product_data,
+                    $settings,
+                    $total_stock,
+                );
                 if ($product_id) {
                     $imported++;
                 }
@@ -87,12 +131,21 @@ class Silverbene_Sync
      *
      * @param array $product_data Product data from API.
      * @param array $settings     Plugin settings.
+     * @param int|null $total_stock Pre-calculated total stock value.
      *
      * @return int|false Product ID on success, false on failure.
      */
-    private function upsert_product($product_data, $settings)
+    private function upsert_product($product_data, $settings, $total_stock = null)
     {
         if (empty($product_data) || !is_array($product_data)) {
+            return false;
+        }
+
+        if (null === $total_stock) {
+            $total_stock = $this->get_total_stock($product_data);
+        }
+
+        if ($total_stock <= 0) {
             return false;
         }
 
@@ -199,6 +252,10 @@ class Silverbene_Sync
             $product->set_stock_status(
                 intval($stock) > 0 ? "instock" : "outofstock",
             );
+        } elseif ($total_stock > 0) {
+            $product->set_manage_stock(true);
+            $product->set_stock_quantity(intval($total_stock));
+            $product->set_stock_status("instock");
         }
 
         if (null !== $weight) {
@@ -540,6 +597,70 @@ class Silverbene_Sync
         }
 
         return $id;
+    }
+
+    /**
+     * Calculate total available stock for a product payload.
+     *
+     * @param array $product_data Product data from API.
+     *
+     * @return int
+     */
+    private function get_total_stock($product_data)
+    {
+        if (empty($product_data) || !is_array($product_data)) {
+            return 0;
+        }
+
+        $stock = $this->extract_value(
+            $product_data,
+            [
+                "stock",
+                "stock_quantity",
+                "quantity",
+                "inventory",
+                "stock_qty",
+                "qty",
+                "real_qty",
+                "option_qty",
+            ],
+            null,
+        );
+
+        if (null !== $stock) {
+            return intval($stock);
+        }
+
+        $total_stock = 0;
+
+        if (!empty($product_data["option"]) && is_array($product_data["option"])) {
+            foreach ($product_data["option"] as $option) {
+                if (!is_array($option)) {
+                    continue;
+                }
+
+                $option_stock = $this->extract_value(
+                    $option,
+                    [
+                        "stock",
+                        "stock_quantity",
+                        "quantity",
+                        "inventory",
+                        "stock_qty",
+                        "qty",
+                        "real_qty",
+                        "option_qty",
+                    ],
+                    null,
+                );
+
+                if (null !== $option_stock) {
+                    $total_stock += intval($option_stock);
+                }
+            }
+        }
+
+        return intval($total_stock);
     }
 
     /**
