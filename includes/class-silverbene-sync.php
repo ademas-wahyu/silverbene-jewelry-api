@@ -334,14 +334,38 @@ class Silverbene_Sync
         $type = isset($settings["price_markup_type"])
             ? $settings["price_markup_type"]
             : "none";
-        $value = isset($settings["price_markup_value"])
+
+        $default_markup = isset($settings["price_markup_value"])
             ? floatval($settings["price_markup_value"])
             : 0;
 
+        $below_markup = null;
+        if (isset($settings["price_markup_value_below_100"])) {
+            $raw_value = $settings["price_markup_value_below_100"];
+            if ("" !== trim((string) $raw_value)) {
+                $below_markup = floatval($raw_value);
+            }
+        }
+
+        $above_markup = null;
+        if (isset($settings["price_markup_value_above_100"])) {
+            $raw_value = $settings["price_markup_value_above_100"];
+            if ("" !== trim((string) $raw_value)) {
+                $above_markup = floatval($raw_value);
+            }
+        }
+
+        $markup_value = $default_markup;
+        if ($base_price < 100) {
+            $markup_value = null !== $below_markup ? $below_markup : $default_markup;
+        } else {
+            $markup_value = null !== $above_markup ? $above_markup : $default_markup;
+        }
+
         if ("percentage" === $type) {
-            $subtotal += $subtotal * ($value / 100);
+            $subtotal += $subtotal * ($markup_value / 100);
         } elseif ("fixed" === $type) {
-            $subtotal += $value;
+            $subtotal += $markup_value;
         }
 
         return max($subtotal, 0);
