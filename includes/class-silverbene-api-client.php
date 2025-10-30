@@ -2,21 +2,23 @@
 /**
  * Silverbene API client helper.
  */
-class Silverbene_API_Client {
+class Silverbene_API_Client
+{
     /**
      * Plugin settings for the API integration.
      *
      * @var array
      */
-    private $settings = array();
+    private $settings = [];
 
     /**
      * Constructor.
      *
      * @param array $settings Optional settings array. If omitted they will be lazily loaded.
      */
-    public function __construct( $settings = array() ) {
-        $this->settings = $this->parse_settings( $settings );
+    public function __construct($settings = [])
+    {
+        $this->settings = $this->parse_settings($settings);
     }
 
     /**
@@ -25,37 +27,34 @@ class Silverbene_API_Client {
      * @param array $args Optional query arguments for pagination/filtering.
      * @return array
      */
-    public function get_products( $args = array() ) {
-        $token = $this->get_setting( 'api_key', '' );
-        if ( empty( $token ) ) {
-            $this->log_error( 'API token is missing, cannot fetch products.' );
-            return array();
+    public function get_products($args = [])
+    {
+        $token = $this->get_setting("api_key", "");
+        if (empty($token)) {
+            $this->log_error("API token is missing, cannot fetch products.");
+            return [];
         }
 
-        $query_args = $this->build_product_query_args( $args );
-        $query_args['token'] = $token;
+        $query_args = $this->build_product_query_args($args);
+        $query_args["token"] = $token;
 
-        $endpoint = $this->determine_products_endpoint( $args );
+        $endpoint = $this->determine_products_endpoint($args);
 
-        $response = $this->request(
-            'GET',
-            $endpoint,
-            array(
-                'query' => $query_args,
-            )
-        );
+        $response = $this->request("GET", $endpoint, [
+            "query" => $query_args,
+        ]);
 
-        if ( empty( $response ) ) {
-            return array();
+        if (empty($response)) {
+            return [];
         }
 
-        $products = $this->normalize_products_response( $response );
+        $products = $this->normalize_products_response($response);
 
-        if ( empty( $products ) ) {
-            return array();
+        if (empty($products)) {
+            return [];
         }
 
-        return $this->maybe_enrich_with_option_quantities( $products );
+        return $this->maybe_enrich_with_option_quantities($products);
     }
 
     /**
@@ -65,32 +64,39 @@ class Silverbene_API_Client {
      *
      * @return array|null
      */
-    public function create_order( $order_data ) {
-        $token = $this->get_setting( 'api_key', '' );
-        if ( empty( $token ) ) {
-            $this->log_error( 'API token is missing, cannot create order.' );
+    public function create_order($order_data)
+    {
+        $token = $this->get_setting("api_key", "");
+        if (empty($token)) {
+            $this->log_error("API token is missing, cannot create order.");
             return null;
         }
 
-        if ( empty( $order_data['token'] ) ) {
-            $order_data['token'] = $token;
+        if (empty($order_data["token"])) {
+            $order_data["token"] = $token;
         }
 
-        $endpoint = $this->get_setting( 'orders_endpoint', '/dropshipping/create_order' );
+        $endpoint = $this->get_setting(
+            "orders_endpoint",
+            "/dropshipping/create_order",
+        );
 
-        $response = $this->request( 'POST', $endpoint, array(
-            'body'    => wp_json_encode( $order_data ),
-            'headers' => array(
-                'Content-Type' => 'application/json',
-            ),
-        ) );
+        $response = $this->request("POST", $endpoint, [
+            "body" => wp_json_encode($order_data),
+            "headers" => [
+                "Content-Type" => "application/json",
+            ],
+        ]);
 
-        if ( empty( $response ) ) {
+        if (empty($response)) {
             return null;
         }
 
-        if ( isset( $response['code'] ) && 0 !== intval( $response['code'] ) ) {
-            $this->log_error( 'Create order request returned non zero status code', $response );
+        if (isset($response["code"]) && 0 !== intval($response["code"])) {
+            $this->log_error(
+                "Create order request returned non zero status code",
+                $response,
+            );
         }
 
         return $response;
@@ -103,44 +109,49 @@ class Silverbene_API_Client {
      *
      * @return array
      */
-    public function get_shipping_methods( $country_id ) {
-        $country_id = strtoupper( trim( $country_id ) );
+    public function get_shipping_methods($country_id)
+    {
+        $country_id = strtoupper(trim($country_id));
 
-        if ( empty( $country_id ) ) {
-            return array();
+        if (empty($country_id)) {
+            return [];
         }
 
-        $token = $this->get_setting( 'api_key', '' );
-        if ( empty( $token ) ) {
-            $this->log_error( 'API token is missing, cannot fetch shipping methods.' );
-            return array();
+        $token = $this->get_setting("api_key", "");
+        if (empty($token)) {
+            $this->log_error(
+                "API token is missing, cannot fetch shipping methods.",
+            );
+            return [];
         }
 
-        $endpoint = $this->get_setting( 'shipping_methods_endpoint', '/dropshipping/get_shipping_method' );
-
-        $response = $this->request(
-            'GET',
-            $endpoint,
-            array(
-                'query' => array(
-                    'token'      => $token,
-                    'country_id' => $country_id,
-                ),
-            )
+        $endpoint = $this->get_setting(
+            "shipping_methods_endpoint",
+            "/dropshipping/get_shipping_method",
         );
 
-        if ( empty( $response ) ) {
-            return array();
+        $response = $this->request("GET", $endpoint, [
+            "query" => [
+                "token" => $token,
+                "country_id" => $country_id,
+            ],
+        ]);
+
+        if (empty($response)) {
+            return [];
         }
 
-        if ( isset( $response['code'] ) && 0 !== intval( $response['code'] ) ) {
-            $this->log_error( 'Shipping method request returned non zero status code', $response );
-            return array();
+        if (isset($response["code"]) && 0 !== intval($response["code"])) {
+            $this->log_error(
+                "Shipping method request returned non zero status code",
+                $response,
+            );
+            return [];
         }
 
-        $data = $this->unwrap_data_container( $response );
+        $data = $this->unwrap_data_container($response);
 
-        return is_array( $data ) ? $data : array();
+        return is_array($data) ? $data : [];
     }
 
     /**
@@ -152,49 +163,54 @@ class Silverbene_API_Client {
      *
      * @return array|null The decoded response body or null on failure.
      */
-    public function request( $method, $endpoint, $args = array() ) {
-        $base_url = untrailingslashit( $this->get_setting( 'api_url', 'https://s.silverbene.com/api' ) );
-        $endpoint = '/' . ltrim( $endpoint, '/' );
-
-        $request_args = array(
-            'method'  => strtoupper( $method ),
-            'timeout' => 30,
-            'headers' => $this->prepare_headers( isset( $args['headers'] ) ? $args['headers'] : array() ),
+    public function request($method, $endpoint, $args = [])
+    {
+        $base_url = untrailingslashit(
+            $this->get_setting("api_url", "https://s.silverbene.com/api"),
         );
+        $endpoint = "/" . ltrim($endpoint, "/");
 
-        if ( ! empty( $args['body'] ) ) {
-            $request_args['body'] = $args['body'];
+        $request_args = [
+            "method" => strtoupper($method),
+            "timeout" => 300,
+            "headers" => $this->prepare_headers(
+                isset($args["headers"]) ? $args["headers"] : [],
+            ),
+        ];
+
+        if (!empty($args["body"])) {
+            $request_args["body"] = $args["body"];
         }
 
-        if ( ! empty( $args['query'] ) && is_array( $args['query'] ) ) {
-            $endpoint = add_query_arg( $args['query'], $endpoint );
+        if (!empty($args["query"]) && is_array($args["query"])) {
+            $endpoint = add_query_arg($args["query"], $endpoint);
         }
 
-        $response = wp_remote_request( $base_url . $endpoint, $request_args );
+        $response = wp_remote_request($base_url . $endpoint, $request_args);
 
-        if ( is_wp_error( $response ) ) {
-            $this->log_error( 'API request failed', array(
-                'endpoint' => $endpoint,
-                'error'    => $response->get_error_message(),
-            ) );
+        if (is_wp_error($response)) {
+            $this->log_error("API request failed", [
+                "endpoint" => $endpoint,
+                "error" => $response->get_error_message(),
+            ]);
 
             return null;
         }
 
-        $status_code = wp_remote_retrieve_response_code( $response );
-        $body        = wp_remote_retrieve_body( $response );
-        $decoded     = null;
+        $status_code = wp_remote_retrieve_response_code($response);
+        $body = wp_remote_retrieve_body($response);
+        $decoded = null;
 
-        if ( ! empty( $body ) ) {
-            $decoded = json_decode( $body, true );
+        if (!empty($body)) {
+            $decoded = json_decode($body, true);
         }
 
-        if ( $status_code < 200 || $status_code >= 300 ) {
-            $this->log_error( 'API request returned a non-success status code', array(
-                'endpoint'    => $endpoint,
-                'status_code' => $status_code,
-                'body'        => $decoded,
-            ) );
+        if ($status_code < 200 || $status_code >= 300) {
+            $this->log_error("API request returned a non-success status code", [
+                "endpoint" => $endpoint,
+                "status_code" => $status_code,
+                "body" => $decoded,
+            ]);
 
             return null;
         }
@@ -207,8 +223,11 @@ class Silverbene_API_Client {
      *
      * @return array
      */
-    public function get_settings() {
-        $this->settings = $this->parse_settings( get_option( 'silverbene_api_settings', array() ) );
+    public function get_settings()
+    {
+        $this->settings = $this->parse_settings(
+            get_option("silverbene_api_settings", []),
+        );
         return $this->settings;
     }
 
@@ -220,16 +239,22 @@ class Silverbene_API_Client {
      *
      * @return mixed
      */
-    public function get_setting( $key, $default = '' ) {
+    public function get_setting($key, $default = "")
+    {
         $settings = $this->get_settings();
-        return isset( $settings[ $key ] ) && '' !== $settings[ $key ] ? $settings[ $key ] : $default;
+        return isset($settings[$key]) && "" !== $settings[$key]
+            ? $settings[$key]
+            : $default;
     }
 
     /**
      * Update cached settings with new values (e.g. after saving options).
      */
-    public function refresh_settings() {
-        $this->settings = $this->parse_settings( get_option( 'silverbene_api_settings', array() ) );
+    public function refresh_settings()
+    {
+        $this->settings = $this->parse_settings(
+            get_option("silverbene_api_settings", []),
+        );
     }
 
     /**
@@ -238,9 +263,10 @@ class Silverbene_API_Client {
      * @param array $headers Optional headers to merge.
      * @return array
      */
-    private function prepare_headers( $headers = array() ) {
-        $headers = wp_parse_args( $headers, array() );
-        $headers['Accept'] = 'application/json';
+    private function prepare_headers($headers = [])
+    {
+        $headers = wp_parse_args($headers, []);
+        $headers["Accept"] = "application/json";
 
         return $headers;
     }
@@ -251,23 +277,24 @@ class Silverbene_API_Client {
      * @param array $settings Raw settings.
      * @return array
      */
-    private function parse_settings( $settings ) {
-        return wp_parse_args( $settings, array(
-            'api_url'                   => 'https://s.silverbene.com/api',
-            'api_key'                   => '',
-            'api_secret'                => '',
-            'products_endpoint'         => '/dropshipping/product_list',
-            'products_by_date_endpoint' => '/dropshipping/product_list_by_date',
-            'option_qty_endpoint'       => '/dropshipping/option_qty',
-            'orders_endpoint'           => '/dropshipping/create_order',
-            'shipping_methods_endpoint' => '/dropshipping/get_shipping_method',
-            'sync_enabled'       => false,
-            'sync_interval'      => 'hourly',
-            'default_category'   => '',
-            'price_markup_type'  => 'percentage',
-            'price_markup_value' => 0,
-            'pre_markup_shipping_fee' => 0,
-        ) );
+    private function parse_settings($settings)
+    {
+        return wp_parse_args($settings, [
+            "api_url" => "https://s.silverbene.com/api",
+            "api_key" => "",
+            "api_secret" => "",
+            "products_endpoint" => "/dropshipping/product_list",
+            "products_by_date_endpoint" => "/dropshipping/product_list_by_date",
+            "option_qty_endpoint" => "/dropshipping/option_qty",
+            "orders_endpoint" => "/dropshipping/create_order",
+            "shipping_methods_endpoint" => "/dropshipping/get_shipping_method",
+            "sync_enabled" => false,
+            "sync_interval" => "hourly",
+            "default_category" => "",
+            "price_markup_type" => "percentage",
+            "price_markup_value" => 0,
+            "pre_markup_shipping_fee" => 0,
+        ]);
     }
 
     /**
@@ -277,14 +304,21 @@ class Silverbene_API_Client {
      *
      * @return string
      */
-    private function determine_products_endpoint( $args ) {
-        $use_by_date = ! empty( $args['start_date'] ) || ! empty( $args['end_date'] );
+    private function determine_products_endpoint($args)
+    {
+        $use_by_date = !empty($args["start_date"]) || !empty($args["end_date"]);
 
-        if ( $use_by_date ) {
-            return $this->get_setting( 'products_by_date_endpoint', '/dropshipping/product_list_by_date' );
+        if ($use_by_date) {
+            return $this->get_setting(
+                "products_by_date_endpoint",
+                "/dropshipping/product_list_by_date",
+            );
         }
 
-        return $this->get_setting( 'products_endpoint', '/dropshipping/product_list' );
+        return $this->get_setting(
+            "products_endpoint",
+            "/dropshipping/product_list",
+        );
     }
 
     /**
@@ -294,36 +328,37 @@ class Silverbene_API_Client {
      *
      * @return array
      */
-    private function build_product_query_args( $args ) {
-        $query_args = array();
+    private function build_product_query_args($args)
+    {
+        $query_args = [];
 
-        if ( ! empty( $args['sku'] ) ) {
-            $skus = $args['sku'];
-            if ( is_array( $skus ) ) {
-                $skus = implode( ',', array_filter( array_map( 'trim', $skus ) ) );
+        if (!empty($args["sku"])) {
+            $skus = $args["sku"];
+            if (is_array($skus)) {
+                $skus = implode(",", array_filter(array_map("trim", $skus)));
             }
-            $query_args['sku'] = $skus;
+            $query_args["sku"] = $skus;
         }
 
-        $date_keys = array( 'start_date', 'end_date' );
-        foreach ( $date_keys as $date_key ) {
-            if ( ! empty( $args[ $date_key ] ) ) {
-                $query_args[ $date_key ] = $args[ $date_key ];
+        $date_keys = ["start_date", "end_date"];
+        foreach ($date_keys as $date_key) {
+            if (!empty($args[$date_key])) {
+                $query_args[$date_key] = $args[$date_key];
             }
         }
 
-        if ( isset( $args['is_really_stock'] ) ) {
-            $query_args['is_really_stock'] = intval( $args['is_really_stock'] );
+        if (isset($args["is_really_stock"])) {
+            $query_args["is_really_stock"] = intval($args["is_really_stock"]);
         }
 
-        if ( ! empty( $args['keywords'] ) ) {
-            $query_args['keywords'] = $args['keywords'];
+        if (!empty($args["keywords"])) {
+            $query_args["keywords"] = $args["keywords"];
         }
 
-        $extra_params = array( 'page', 'per_page', 'limit', 'offset' );
-        foreach ( $extra_params as $param ) {
-            if ( isset( $args[ $param ] ) && '' !== $args[ $param ] ) {
-                $query_args[ $param ] = $args[ $param ];
+        $extra_params = ["page", "per_page", "limit", "offset"];
+        foreach ($extra_params as $param) {
+            if (isset($args[$param]) && "" !== $args[$param]) {
+                $query_args[$param] = $args[$param];
             }
         }
 
@@ -337,25 +372,29 @@ class Silverbene_API_Client {
      *
      * @return array
      */
-    private function normalize_products_response( $response ) {
-        if ( isset( $response['code'] ) && 0 !== intval( $response['code'] ) ) {
-            $this->log_error( 'Product request returned non zero status code', $response );
-            return array();
+    private function normalize_products_response($response)
+    {
+        if (isset($response["code"]) && 0 !== intval($response["code"])) {
+            $this->log_error(
+                "Product request returned non zero status code",
+                $response,
+            );
+            return [];
         }
 
-        $data = $this->unwrap_data_container( $response );
+        $data = $this->unwrap_data_container($response);
 
-        if ( empty( $data ) || ! is_array( $data ) ) {
-            return array();
+        if (empty($data) || !is_array($data)) {
+            return [];
         }
 
-        $normalized = array();
-        foreach ( $data as $product_item ) {
-            if ( ! is_array( $product_item ) ) {
+        $normalized = [];
+        foreach ($data as $product_item) {
+            if (!is_array($product_item)) {
                 continue;
             }
 
-            $normalized[] = $this->normalize_product_item( $product_item );
+            $normalized[] = $this->normalize_product_item($product_item);
         }
 
         return $normalized;
@@ -368,63 +407,87 @@ class Silverbene_API_Client {
      *
      * @return array
      */
-    private function normalize_product_item( $item ) {
+    private function normalize_product_item($item)
+    {
         $normalized = $item;
 
-        $normalized['sku'] = $this->extract_product_field(
-            $item,
-            array( 'sku', 'product_sku', 'goods_sn', 'spu', 'item_sku', 'SKU' )
-        );
+        $normalized["sku"] = $this->extract_product_field($item, [
+            "sku",
+            "product_sku",
+            "goods_sn",
+            "spu",
+            "item_sku",
+            "SKU",
+        ]);
 
-        $normalized['name'] = $this->extract_product_field(
-            $item,
-            array( 'name', 'title', 'product_name', 'goods_name', 'product_title' )
-        );
+        $normalized["name"] = $this->extract_product_field($item, [
+            "name",
+            "title",
+            "product_name",
+            "goods_name",
+            "product_title",
+        ]);
 
-        $description = $this->extract_product_field(
-            $item,
-            array( 'description', 'desc', 'detail', 'content', 'product_description', 'product_detail', 'goods_desc' )
-        );
+        $description = $this->extract_product_field($item, [
+            "description",
+            "desc",
+            "detail",
+            "content",
+            "product_description",
+            "product_detail",
+            "goods_desc",
+        ]);
 
-        if ( ! empty( $description ) ) {
-            $normalized['description'] = $description;
+        if (!empty($description)) {
+            $normalized["description"] = $description;
         }
 
-        $short_desc = $this->extract_product_field(
-            $item,
-            array( 'short_description', 'short_desc', 'summary', 'brief' )
-        );
+        $short_desc = $this->extract_product_field($item, [
+            "short_description",
+            "short_desc",
+            "summary",
+            "brief",
+        ]);
 
-        if ( ! empty( $short_desc ) ) {
-            $normalized['short_description'] = $short_desc;
+        if (!empty($short_desc)) {
+            $normalized["short_description"] = $short_desc;
         }
 
-        $price = $this->extract_product_field(
-            $item,
-            array( 'price', 'regular_price', 'selling_price', 'sale_price', 'shop_price', 'market_price' )
-        );
+        $price = $this->extract_product_field($item, [
+            "price",
+            "regular_price",
+            "selling_price",
+            "sale_price",
+            "shop_price",
+            "market_price",
+        ]);
 
-        if ( '' !== $price && null !== $price ) {
-            $normalized['price'] = floatval( $price );
+        if ("" !== $price && null !== $price) {
+            $normalized["price"] = floatval($price);
         }
 
-        $stock = $this->extract_product_field(
-            $item,
-            array( 'stock', 'stock_qty', 'stock_quantity', 'quantity', 'qty', 'inventory', 'real_qty' )
-        );
+        $stock = $this->extract_product_field($item, [
+            "stock",
+            "stock_qty",
+            "stock_quantity",
+            "quantity",
+            "qty",
+            "inventory",
+            "real_qty",
+        ]);
 
-        if ( '' !== $stock && null !== $stock ) {
-            $normalized['stock'] = intval( $stock );
+        if ("" !== $stock && null !== $stock) {
+            $normalized["stock"] = intval($stock);
         }
 
-        $images = $this->extract_product_images( $item );
-        if ( ! empty( $images ) ) {
-            $normalized['images'] = $images;
+        $images = $this->extract_product_images($item);
+        if (!empty($images)) {
+            $normalized["images"] = $images;
         }
 
-        $options = $this->extract_product_options( $item );
-        if ( ! empty( $options ) ) {
-            $normalized['options'] = $options;
+        $options = $this->extract_product_options($item);
+        if (!empty($options)) {
+            $normalized["options"] = $options;
         }
 
         return $normalized;
@@ -437,32 +500,33 @@ class Silverbene_API_Client {
      *
      * @return array
      */
-    private function unwrap_data_container( $response ) {
-        if ( isset( $response['data'] ) ) {
-            $data = $response['data'];
+    private function unwrap_data_container($response)
+    {
+        if (isset($response["data"])) {
+            $data = $response["data"];
 
-            if ( isset( $data['data'] ) ) {
-                $data = $data['data'];
+            if (isset($data["data"])) {
+                $data = $data["data"];
             }
 
-            if ( is_array( $data ) ) {
+            if (is_array($data)) {
                 return $data;
             }
         }
 
-        if ( isset( $response['items'] ) && is_array( $response['items'] ) ) {
-            return $response['items'];
+        if (isset($response["items"]) && is_array($response["items"])) {
+            return $response["items"];
         }
 
-        if ( isset( $response['products'] ) && is_array( $response['products'] ) ) {
-            return $response['products'];
+        if (isset($response["products"]) && is_array($response["products"])) {
+            return $response["products"];
         }
 
-        if ( isset( $response['data_list'] ) && is_array( $response['data_list'] ) ) {
-            return $response['data_list'];
+        if (isset($response["data_list"]) && is_array($response["data_list"])) {
+            return $response["data_list"];
         }
 
-        return is_array( $response ) ? $response : array();
+        return is_array($response) ? $response : [];
     }
 
     /**
@@ -473,14 +537,19 @@ class Silverbene_API_Client {
      *
      * @return mixed
      */
-    private function extract_product_field( $item, $keys ) {
-        foreach ( $keys as $key ) {
-            if ( isset( $item[ $key ] ) && '' !== $item[ $key ] && null !== $item[ $key ] ) {
-                return $item[ $key ];
+    private function extract_product_field($item, $keys)
+    {
+        foreach ($keys as $key) {
+            if (
+                isset($item[$key]) &&
+                "" !== $item[$key] &&
+                null !== $item[$key]
+            ) {
+                return $item[$key];
             }
         }
 
-        return '';
+        return "";
     }
 
     /**
@@ -490,64 +559,71 @@ class Silverbene_API_Client {
      *
      * @return array
      */
-    private function extract_product_images( $item ) {
-        $image_keys = array(
-            'images',
-            'image_urls',
-            'image_list',
-            'img_urls',
-            'img_list',
-            'product_images',
-            'gallery',
-            'imgs',
-            'pictures',
-            'photos',
-            'image',
-            'thumb',
-        );
+    private function extract_product_images($item)
+    {
+        $image_keys = [
+            "images",
+            "image_urls",
+            "image_list",
+            "img_urls",
+            "img_list",
+            "product_images",
+            "gallery",
+            "imgs",
+            "pictures",
+            "photos",
+            "image",
+            "thumb",
+        ];
 
-        foreach ( $image_keys as $key ) {
-            if ( empty( $item[ $key ] ) ) {
+        foreach ($image_keys as $key) {
+            if (empty($item[$key])) {
                 continue;
             }
 
-            $images = $item[ $key ];
+            $images = $item[$key];
 
-            if ( is_string( $images ) ) {
-                $decoded = json_decode( $images, true );
-                if ( json_last_error() === JSON_ERROR_NONE && is_array( $decoded ) ) {
+            if (is_string($images)) {
+                $decoded = json_decode($images, true);
+                if (
+                    json_last_error() === JSON_ERROR_NONE &&
+                    is_array($decoded)
+                ) {
                     $images = $decoded;
                 }
             }
 
-            if ( is_string( $images ) ) {
-                $images = array_map( 'trim', explode( ',', $images ) );
+            if (is_string($images)) {
+                $images = array_map("trim", explode(",", $images));
             }
 
-            if ( is_array( $images ) ) {
-                $urls = array();
-                foreach ( $images as $image_item ) {
-                    if ( is_array( $image_item ) ) {
-                        $candidate = $this->extract_product_field(
-                            $image_item,
-                            array( 'url', 'image', 'image_url', 'thumb', 'src' )
-                        );
-                        if ( ! empty( $candidate ) ) {
+            if (is_array($images)) {
+                $urls = [];
+                foreach ($images as $image_item) {
+                    if (is_array($image_item)) {
+                        $candidate = $this->extract_product_field($image_item, [
+                            "url",
+                            "image",
+                            "image_url",
+                            "thumb",
+                            "src",
+                        ]);
+                        if (!empty($candidate)) {
                             $urls[] = $candidate;
                         }
-                    } elseif ( is_string( $image_item ) ) {
+                    } elseif (is_string($image_item)) {
                         $urls[] = $image_item;
                     }
                 }
 
-                $urls = array_values( array_filter( array_unique( $urls ) ) );
-                if ( ! empty( $urls ) ) {
+                $urls = array_values(array_filter(array_unique($urls)));
+                if (!empty($urls)) {
                     return $urls;
                 }
             }
         }
 
-        return array();
+        return [];
     }
 
     /**
@@ -557,67 +633,73 @@ class Silverbene_API_Client {
      *
      * @return array
      */
-    private function extract_product_options( $item ) {
-        $option_keys = array( 'options', 'option_list', 'variants', 'skus', 'items' );
+    private function extract_product_options($item)
+    {
+        $option_keys = ["options", "option_list", "variants", "skus", "items"];
 
-        foreach ( $option_keys as $key ) {
-            if ( empty( $item[ $key ] ) || ! is_array( $item[ $key ] ) ) {
+        foreach ($option_keys as $key) {
+            if (empty($item[$key]) || !is_array($item[$key])) {
                 continue;
             }
 
-            $options = array();
-            foreach ( $item[ $key ] as $option_item ) {
-                if ( ! is_array( $option_item ) ) {
+            $options = [];
+            foreach ($item[$key] as $option_item) {
+                if (!is_array($option_item)) {
                     continue;
                 }
 
                 $option = $option_item;
 
-                if ( empty( $option['option_id'] ) ) {
-                    $option['option_id'] = $this->extract_product_field(
+                if (empty($option["option_id"])) {
+                    $option["option_id"] = $this->extract_product_field(
                         $option_item,
-                        array( 'option_id', 'id', 'variant_id' )
+                        ["option_id", "id", "variant_id"],
                     );
                 }
 
-                if ( empty( $option['sku'] ) ) {
-                    $option['sku'] = $this->extract_product_field(
+                if (empty($option["sku"])) {
+                    $option["sku"] = $this->extract_product_field(
                         $option_item,
-                        array( 'sku', 'option_sku', 'variant_sku' )
+                        ["sku", "option_sku", "variant_sku"],
                     );
                 }
 
-                if ( ! isset( $option['price'] ) ) {
-                    $price = $this->extract_product_field(
-                        $option_item,
-                        array( 'price', 'selling_price', 'sale_price', 'shop_price' )
-                    );
+                if (!isset($option["price"])) {
+                    $price = $this->extract_product_field($option_item, [
+                        "price",
+                        "selling_price",
+                        "sale_price",
+                        "shop_price",
+                    ]);
 
-                    if ( '' !== $price ) {
-                        $option['price'] = floatval( $price );
+                    if ("" !== $price) {
+                        $option["price"] = floatval($price);
                     }
                 }
 
-                if ( ! isset( $option['stock'] ) ) {
-                    $qty = $this->extract_product_field(
-                        $option_item,
-                        array( 'stock', 'qty', 'stock_qty', 'inventory', 'option_qty' )
-                    );
+                if (!isset($option["stock"])) {
+                    $qty = $this->extract_product_field($option_item, [
+                        "stock",
+                        "qty",
+                        "stock_qty",
+                        "inventory",
+                        "option_qty",
+                    ]);
 
-                    if ( '' !== $qty ) {
-                        $option['stock'] = intval( $qty );
+                    if ("" !== $qty) {
+                        $option["stock"] = intval($qty);
                     }
                 }
 
                 $options[] = $option;
             }
 
-            if ( ! empty( $options ) ) {
+            if (!empty($options)) {
                 return $options;
             }
         }
 
-        return array();
+        return [];
     }
 
     /**
@@ -627,56 +709,58 @@ class Silverbene_API_Client {
      *
      * @return array
      */
-    private function maybe_enrich_with_option_quantities( $products ) {
-        $option_ids = array();
+    private function maybe_enrich_with_option_quantities($products)
+    {
+        $option_ids = [];
 
-        foreach ( $products as $product ) {
-            if ( empty( $product['options'] ) || ! is_array( $product['options'] ) ) {
+        foreach ($products as $product) {
+            if (empty($product["options"]) || !is_array($product["options"])) {
                 continue;
             }
 
-            foreach ( $product['options'] as $option ) {
-                if ( empty( $option['option_id'] ) ) {
+            foreach ($product["options"] as $option) {
+                if (empty($option["option_id"])) {
                     continue;
                 }
 
-                $option_ids[] = $option['option_id'];
+                $option_ids[] = $option["option_id"];
             }
         }
 
-        $option_ids = array_values( array_filter( array_unique( $option_ids ) ) );
+        $option_ids = array_values(array_filter(array_unique($option_ids)));
 
-        if ( empty( $option_ids ) ) {
+        if (empty($option_ids)) {
             return $products;
         }
 
-        $quantities = $this->get_option_quantities( $option_ids );
+        $quantities = $this->get_option_quantities($option_ids);
 
-        if ( empty( $quantities ) ) {
+        if (empty($quantities)) {
             return $products;
         }
 
-        foreach ( $products as $index => $product ) {
-            if ( empty( $product['options'] ) || ! is_array( $product['options'] ) ) {
+        foreach ($products as $index => $product) {
+            if (empty($product["options"]) || !is_array($product["options"])) {
                 continue;
             }
 
             $total_stock = 0;
 
-            foreach ( $product['options'] as $option_index => $option ) {
-                if ( empty( $option['option_id'] ) ) {
+            foreach ($product["options"] as $option_index => $option) {
+                if (empty($option["option_id"])) {
                     continue;
                 }
 
-                $option_id = $option['option_id'];
-                if ( isset( $quantities[ $option_id ] ) ) {
-                    $products[ $index ]['options'][ $option_index ]['stock'] = $quantities[ $option_id ];
-                    $total_stock += intval( $quantities[ $option_id ] );
+                $option_id = $option["option_id"];
+                if (isset($quantities[$option_id])) {
+                    $products[$index]["options"][$option_index]["stock"] =
+                        $quantities[$option_id];
+                    $total_stock += intval($quantities[$option_id]);
                 }
             }
 
-            if ( empty( $product['stock'] ) && $total_stock > 0 ) {
-                $products[ $index ]['stock'] = $total_stock;
+            if (empty($product["stock"]) && $total_stock > 0) {
+                $products[$index]["stock"] = $total_stock;
             }
         }
 
@@ -690,67 +774,77 @@ class Silverbene_API_Client {
      *
      * @return array Map of option_id => qty.
      */
-    public function get_option_quantities( $option_ids ) {
-        if ( empty( $option_ids ) ) {
-            return array();
+    public function get_option_quantities($option_ids)
+    {
+        if (empty($option_ids)) {
+            return [];
         }
 
-        $token = $this->get_setting( 'api_key', '' );
-        if ( empty( $token ) ) {
-            return array();
+        $token = $this->get_setting("api_key", "");
+        if (empty($token)) {
+            return [];
         }
 
-        $endpoint = $this->get_setting( 'option_qty_endpoint', '/dropshipping/option_qty' );
-
-        $option_ids = array_map( 'strval', $option_ids );
-        $option_ids = array_map( 'trim', $option_ids );
-
-        $response = $this->request(
-            'GET',
-            $endpoint,
-            array(
-                'query' => array(
-                    'token'     => $token,
-                    'option_id' => implode( ',', array_filter( $option_ids ) ),
-                ),
-            )
+        $endpoint = $this->get_setting(
+            "option_qty_endpoint",
+            "/dropshipping/option_qty",
         );
 
-        if ( empty( $response ) ) {
-            return array();
+        $option_ids = array_map("strval", $option_ids);
+        $option_ids = array_map("trim", $option_ids);
+
+        $response = $this->request("GET", $endpoint, [
+            "query" => [
+                "token" => $token,
+                "option_id" => implode(",", array_filter($option_ids)),
+            ],
+        ]);
+
+        if (empty($response)) {
+            return [];
         }
 
-        if ( isset( $response['code'] ) && 0 !== intval( $response['code'] ) ) {
-            $this->log_error( 'Option quantity request returned non zero status code', $response );
-            return array();
-        }
-
-        $data = $this->unwrap_data_container( $response );
-        if ( empty( $data ) || ! is_array( $data ) ) {
-            return array();
-        }
-
-        $quantities = array();
-        foreach ( $data as $item ) {
-            if ( ! is_array( $item ) ) {
-                continue;
-            }
-
-            $option_id = $this->extract_product_field( $item, array( 'option_id', 'id', 'variant_id' ) );
-            if ( empty( $option_id ) ) {
-                continue;
-            }
-
-            $qty = $this->extract_product_field(
-                $item,
-                array( 'qty', 'stock', 'stock_qty', 'inventory', 'option_qty' )
+        if (isset($response["code"]) && 0 !== intval($response["code"])) {
+            $this->log_error(
+                "Option quantity request returned non zero status code",
+                $response,
             );
+            return [];
+        }
 
-            if ( '' === $qty || null === $qty ) {
+        $data = $this->unwrap_data_container($response);
+        if (empty($data) || !is_array($data)) {
+            return [];
+        }
+
+        $quantities = [];
+        foreach ($data as $item) {
+            if (!is_array($item)) {
                 continue;
             }
 
-            $quantities[ $option_id ] = intval( $qty );
+            $option_id = $this->extract_product_field($item, [
+                "option_id",
+                "id",
+                "variant_id",
+            ]);
+            if (empty($option_id)) {
+                continue;
+            }
+
+            $qty = $this->extract_product_field($item, [
+                "qty",
+                "stock",
+                "stock_qty",
+                "inventory",
+                "option_qty",
+            ]);
+
+            if ("" === $qty || null === $qty) {
+                continue;
+            }
+
+            $quantities[$option_id] = intval($qty);
         }
 
         return $quantities;
@@ -762,10 +856,13 @@ class Silverbene_API_Client {
      * @param string $message Log message.
      * @param array  $context Additional context.
      */
-    private function log_error( $message, $context = array() ) {
-        if ( function_exists( 'wc_get_logger' ) ) {
+    private function log_error($message, $context = [])
+    {
+        if (function_exists("wc_get_logger")) {
             $logger = wc_get_logger();
-            $logger->error( $message . ' - ' . wp_json_encode( $context ), array( 'source' => 'silverbene-api' ) );
+            $logger->error($message . " - " . wp_json_encode($context), [
+                "source" => "silverbene-api",
+            ]);
         }
     }
 }
