@@ -196,7 +196,7 @@ class Silverbene_API {
                 'label_for' => 'price_markup_value',
                 'min'       => 0,
                 'step'      => '0.01',
-                'description' => __( 'Masukkan nilai markup. Untuk tipe persentase gunakan angka 10 untuk 10%.', 'silverbene-api-integration' ),
+                'description' => __( 'Masukkan nilai markup. Untuk tipe persentase gunakan angka 10 untuk 10%. Nilai ini juga akan dipakai jika kolom markup khusus dikosongkan.', 'silverbene-api-integration' ),
             )
         );
 
@@ -210,7 +210,7 @@ class Silverbene_API {
                 'label_for'   => 'price_markup_value_below_100',
                 'min'         => 0,
                 'step'        => '0.01',
-                'description' => __( 'Nilai markup khusus yang diterapkan ketika harga dasar produk kurang dari 100.', 'silverbene-api-integration' ),
+                'description' => __( 'Nilai markup khusus yang diterapkan ketika harga dasar produk kurang dari 100. Biarkan kosong untuk menggunakan nilai penyesuaian utama.', 'silverbene-api-integration' ),
             )
         );
 
@@ -224,7 +224,7 @@ class Silverbene_API {
                 'label_for'   => 'price_markup_value_above_100',
                 'min'         => 0,
                 'step'        => '0.01',
-                'description' => __( 'Nilai markup khusus yang diterapkan ketika harga dasar produk 100 atau lebih.', 'silverbene-api-integration' ),
+                'description' => __( 'Nilai markup khusus yang diterapkan ketika harga dasar produk 100 atau lebih. Biarkan kosong untuk menggunakan nilai penyesuaian utama.', 'silverbene-api-integration' ),
             )
         );
 
@@ -335,8 +335,16 @@ class Silverbene_API {
         $output['price_markup_type']  = isset( $input['price_markup_type'] ) ? sanitize_key( $input['price_markup_type'] ) : 'none';
         $output['price_markup_value'] = isset( $input['price_markup_value'] ) ? floatval( $input['price_markup_value'] ) : 0;
         $output['pre_markup_shipping_fee'] = isset( $input['pre_markup_shipping_fee'] ) ? max( 0, floatval( $input['pre_markup_shipping_fee'] ) ) : 0;
-        $output['price_markup_value_below_100'] = isset( $input['price_markup_value_below_100'] ) ? max( 0, floatval( $input['price_markup_value_below_100'] ) ) : 0;
-        $output['price_markup_value_above_100'] = isset( $input['price_markup_value_above_100'] ) ? max( 0, floatval( $input['price_markup_value_above_100'] ) ) : 0;
+
+        if ( isset( $input['price_markup_value_below_100'] ) ) {
+            $raw_value = trim( (string) $input['price_markup_value_below_100'] );
+            $output['price_markup_value_below_100'] = '' === $raw_value ? '' : max( 0, floatval( $raw_value ) );
+        }
+
+        if ( isset( $input['price_markup_value_above_100'] ) ) {
+            $raw_value = trim( (string) $input['price_markup_value_above_100'] );
+            $output['price_markup_value_above_100'] = '' === $raw_value ? '' : max( 0, floatval( $raw_value ) );
+        }
 
         $endpoints = array(
             'products_endpoint',
