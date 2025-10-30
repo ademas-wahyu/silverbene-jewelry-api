@@ -1,5 +1,6 @@
 <?php
-class Silverbene_Sync {
+class Silverbene_Sync
+{
     /**
      * API client instance.
      *
@@ -12,7 +13,8 @@ class Silverbene_Sync {
      *
      * @param Silverbene_API_Client $client API client.
      */
-    public function __construct( Silverbene_API_Client $client ) {
+    public function __construct(Silverbene_API_Client $client)
+    {
         $this->client = $client;
     }
 
@@ -21,20 +23,21 @@ class Silverbene_Sync {
      *
      * @param bool $force Whether to force sync ignoring settings.
      */
-    public function sync_products( $force = false ) {
-        if ( ! class_exists( 'WooCommerce' ) ) {
+    public function sync_products($force = false)
+    {
+        if (!class_exists("WooCommerce")) {
             return;
         }
 
         $settings = $this->client->get_settings();
-        if ( ! $force && empty( $settings['sync_enabled'] ) ) {
+        if (!$force && empty($settings["sync_enabled"])) {
             return;
         }
 
-        $logger  = function_exists( 'wc_get_logger' ) ? wc_get_logger() : null;
-        $context = array( 'source' => 'silverbene-api-sync' );
+        $logger = function_exists("wc_get_logger") ? wc_get_logger() : null;
+        $context = ["source" => "silverbene-api-sync"];
 
-        $page     = 1;
+        $page = 1;
         $per_page = 50;
         $imported = 0;
 
@@ -45,35 +48,36 @@ class Silverbene_Sync {
              * by adjusting the 'start_date' below.
              * For regular daily/hourly syncs, the default of 30 days is safe.
              */
-            $start_date = wp_date( 'Y-m-d', strtotime( '-1 year' ) );
+            // $start_date = wp_date( 'Y-m-d', strtotime( '-1 year' ) );
 
-            $products = $this->client->get_products(
-                array(
-                    'page'       => $page,
-                    'per_page'   => $per_page,
-                    'start_date' => $start_date,
-                    'end_date'   => wp_date( 'Y-m-d' ),
-                )
-            );
+            $products = $this->client->get_products([
+                "page" => $page,
+                "per_page" => $per_page,
+                // 'start_date' => $start_date,
+                // 'end_date'   => wp_date( 'Y-m-d' ),
+            ]);
 
-            if ( empty( $products ) ) {
+            if (empty($products)) {
                 break;
             }
 
-            foreach ( $products as $product_data ) {
-                $product_id = $this->upsert_product( $product_data, $settings );
-                if ( $product_id ) {
+            foreach ($products as $product_data) {
+                $product_id = $this->upsert_product($product_data, $settings);
+                if ($product_id) {
                     $imported++;
                 }
             }
 
             $page++;
-        } while ( count( $products ) >= $per_page );
+        } while (count($products) >= $per_page);
 
-        if ( $logger ) {
+        if ($logger) {
             $logger->info(
-                sprintf( 'Sinkronisasi produk selesai. Total produk diperbarui: %d', $imported ),
-                $context
+                sprintf(
+                    "Sinkronisasi produk selesai. Total produk diperbarui: %d",
+                    $imported,
+                ),
+                $context,
             );
         }
     }
@@ -86,93 +90,161 @@ class Silverbene_Sync {
      *
      * @return int|false Product ID on success, false on failure.
      */
-    private function upsert_product( $product_data, $settings ) {
-        if ( empty( $product_data ) || ! is_array( $product_data ) ) {
+    private function upsert_product($product_data, $settings)
+    {
+        if (empty($product_data) || !is_array($product_data)) {
             return false;
         }
 
-        $sku = $this->extract_value( $product_data, array( 'sku', 'SKU', 'product_sku', 'id' ) );
-        if ( empty( $sku ) ) {
+        $sku = $this->extract_value($product_data, [
+            "sku",
+            "SKU",
+            "product_sku",
+            "id",
+        ]);
+        if (empty($sku)) {
             return false;
         }
 
-        $product_id = wc_get_product_id_by_sku( $sku );
-        $is_new     = false;
+        $product_id = wc_get_product_id_by_sku($sku);
+        $is_new = false;
 
-        if ( $product_id ) {
-            $product = wc_get_product( $product_id );
+        if ($product_id) {
+            $product = wc_get_product($product_id);
         } else {
             $product = new WC_Product_Simple();
-            $product->set_sku( $sku );
+            $product->set_sku($sku);
             $is_new = true;
         }
 
-        if ( ! $product ) {
+        if (!$product) {
             return false;
         }
 
-        $name        = $this->extract_value( $product_data, array( 'name', 'title', 'product_name', 'goods_name', 'product_title' ) );
-        $description = $this->extract_value( $product_data, array( 'description', 'desc', 'detail', 'content', 'product_description', 'product_detail', 'product_content', 'goods_desc' ) );
-        $short_desc  = $this->extract_value( $product_data, array( 'short_description', 'short_desc', 'summary', 'brief' ) );
-        $price       = $this->extract_value( $product_data, array( 'price', 'regular_price', 'selling_price', 'sale_price', 'shop_price', 'market_price' ), 0 );
+        $name = $this->extract_value($product_data, [
+            "name",
+            "title",
+            "product_name",
+            "goods_name",
+            "product_title",
+        ]);
+        $description = $this->extract_value($product_data, [
+            "description",
+            "desc",
+            "detail",
+            "content",
+            "product_description",
+            "product_detail",
+            "product_content",
+            "goods_desc",
+        ]);
+        $short_desc = $this->extract_value($product_data, [
+            "short_description",
+            "short_desc",
+            "summary",
+            "brief",
+        ]);
+        $price = $this->extract_value(
+            $product_data,
+            [
+                "price",
+                "regular_price",
+                "selling_price",
+                "sale_price",
+                "shop_price",
+                "market_price",
+            ],
+            0,
+        );
 
         // Fallback to option price if top-level price is not available
-        if ( empty( $price ) && ! empty( $product_data['option'][0]['price'] ) ) {
-            $price = $product_data['option'][0]['price'];
+        if (empty($price) && !empty($product_data["option"][0]["price"])) {
+            $price = $product_data["option"][0]["price"];
         }
 
-        $stock       = $this->extract_value( $product_data, array( 'stock', 'stock_quantity', 'quantity', 'inventory', 'stock_qty', 'qty', 'real_qty', 'option_qty' ), null );
-        $weight      = $this->extract_value( $product_data, array( 'weight' ), null );
-        $length      = $this->extract_value( $product_data, array( 'length' ), null );
-        $width       = $this->extract_value( $product_data, array( 'width' ), null );
-        $height      = $this->extract_value( $product_data, array( 'height' ), null );
+        $stock = $this->extract_value(
+            $product_data,
+            [
+                "stock",
+                "stock_quantity",
+                "quantity",
+                "inventory",
+                "stock_qty",
+                "qty",
+                "real_qty",
+                "option_qty",
+            ],
+            null,
+        );
+        $weight = $this->extract_value($product_data, ["weight"], null);
+        $length = $this->extract_value($product_data, ["length"], null);
+        $width = $this->extract_value($product_data, ["width"], null);
+        $height = $this->extract_value($product_data, ["height"], null);
 
-        if ( $name ) {
-            $product->set_name( wp_strip_all_tags( $name ) );
+        if ($name) {
+            $product->set_name(wp_strip_all_tags($name));
         }
 
-        if ( $description ) {
-            $product->set_description( wp_kses_post( $description ) );
+        if ($description) {
+            $product->set_description(wp_kses_post($description));
         }
 
-        if ( $short_desc ) {
-            $product->set_short_description( wp_kses_post( $short_desc ) );
+        if ($short_desc) {
+            $product->set_short_description(wp_kses_post($short_desc));
         }
 
-        if ( null !== $stock ) {
-            $product->set_manage_stock( true );
-            $product->set_stock_quantity( intval( $stock ) );
-            $product->set_stock_status( intval( $stock ) > 0 ? 'instock' : 'outofstock' );
+        if (null !== $stock) {
+            $product->set_manage_stock(true);
+            $product->set_stock_quantity(intval($stock));
+            $product->set_stock_status(
+                intval($stock) > 0 ? "instock" : "outofstock",
+            );
         }
 
-        if ( null !== $weight ) {
-            $product->set_weight( wc_format_decimal( $weight ) );
+        if (null !== $weight) {
+            $product->set_weight(wc_format_decimal($weight));
         }
 
-        if ( null !== $length || null !== $width || null !== $height ) {
-            $product->set_length( wc_format_decimal( $length ) );
-            $product->set_width( wc_format_decimal( $width ) );
-            $product->set_height( wc_format_decimal( $height ) );
+        if (null !== $length || null !== $width || null !== $height) {
+            $product->set_length(wc_format_decimal($length));
+            $product->set_width(wc_format_decimal($width));
+            $product->set_height(wc_format_decimal($height));
         }
 
-        $price = $this->apply_markup( $price, $settings );
-        $product->set_regular_price( wc_format_decimal( $price ) );
-        $product->set_price( wc_format_decimal( $price ) );
+        $price = $this->apply_markup($price, $settings);
+        $product->set_regular_price(wc_format_decimal($price));
+        $product->set_price(wc_format_decimal($price));
 
-        $status = $this->extract_value( $product_data, array( 'status', 'product_status' ), 'publish' );
-        $product->set_status( in_array( $status, array( 'draft', 'pending', 'private', 'publish' ), true ) ? $status : 'publish' );
+        $status = $this->extract_value(
+            $product_data,
+            ["status", "product_status"],
+            "publish",
+        );
+        $product->set_status(
+            in_array($status, ["draft", "pending", "private", "publish"], true)
+                ? $status
+                : "publish",
+        );
 
         $product_id = $product->save();
 
-        if ( ! $product_id ) {
+        if (!$product_id) {
             return false;
         }
 
-        $this->assign_categories_and_tags( $product_id, $product_data, $settings );
-        $this->assign_images( $product_id, $product_data, $is_new );
-        $this->assign_attributes( $product_id, $product_data );
+        $this->assign_categories_and_tags(
+            $product_id,
+            $product_data,
+            $settings,
+        );
+        $this->assign_images($product_id, $product_data, $is_new);
+        $this->assign_attributes($product_id, $product_data);
 
-        update_post_meta( $product_id, '_silverbene_product_id', $this->extract_value( $product_data, array( 'id', 'product_id' ), $sku ) );
+        update_post_meta(
+            $product_id,
+            "_silverbene_product_id",
+            $this->extract_value($product_data, ["id", "product_id"], $sku),
+        );
 
         return $product_id;
     }
@@ -190,25 +262,32 @@ class Silverbene_Sync {
      *
      * @return float
      */
-    private function apply_markup( $base_price, $settings ) {
-        $base_price   = max( floatval( $base_price ), 0 );
-        $shipping_fee = isset( $settings['pre_markup_shipping_fee'] ) ? max( 0, floatval( $settings['pre_markup_shipping_fee'] ) ) : 0;
-        $subtotal     = $base_price + $shipping_fee;
+    private function apply_markup($base_price, $settings)
+    {
+        $base_price = max(floatval($base_price), 0);
+        $shipping_fee = isset($settings["pre_markup_shipping_fee"])
+            ? max(0, floatval($settings["pre_markup_shipping_fee"]))
+            : 0;
+        $subtotal = $base_price + $shipping_fee;
 
-        if ( $subtotal <= 0 ) {
+        if ($subtotal <= 0) {
             return 0;
         }
 
-        $type  = isset( $settings['price_markup_type'] ) ? $settings['price_markup_type'] : 'none';
-        $value = isset( $settings['price_markup_value'] ) ? floatval( $settings['price_markup_value'] ) : 0;
+        $type = isset($settings["price_markup_type"])
+            ? $settings["price_markup_type"]
+            : "none";
+        $value = isset($settings["price_markup_value"])
+            ? floatval($settings["price_markup_value"])
+            : 0;
 
-        if ( 'percentage' === $type ) {
-            $subtotal += $subtotal * ( $value / 100 );
-        } elseif ( 'fixed' === $type ) {
+        if ("percentage" === $type) {
+            $subtotal += $subtotal * ($value / 100);
+        } elseif ("fixed" === $type) {
             $subtotal += $value;
         }
 
-        return max( $subtotal, 0 );
+        return max($subtotal, 0);
     }
 
     /**
@@ -218,46 +297,60 @@ class Silverbene_Sync {
      * @param array $product_data API data.
      * @param array $settings     Plugin settings.
      */
-    private function assign_categories_and_tags( $product_id, $product_data, $settings ) {
-        $categories = $this->extract_value( $product_data, array( 'categories', 'category', 'product_category' ), array() );
-        $tags       = $this->extract_value( $product_data, array( 'tags', 'tag_list' ), array() );
+    private function assign_categories_and_tags(
+        $product_id,
+        $product_data,
+        $settings,
+    ) {
+        $categories = $this->extract_value(
+            $product_data,
+            ["categories", "category", "product_category"],
+            [],
+        );
+        $tags = $this->extract_value($product_data, ["tags", "tag_list"], []);
 
-        if ( ! is_array( $categories ) ) {
-            $categories = array_filter( array_map( 'trim', explode( ',', strval( $categories ) ) ) );
+        if (!is_array($categories)) {
+            $categories = array_filter(
+                array_map("trim", explode(",", strval($categories))),
+            );
         }
 
-        if ( empty( $categories ) && ! empty( $settings['default_category'] ) ) {
-            $categories = array( $settings['default_category'] );
+        if (empty($categories) && !empty($settings["default_category"])) {
+            $categories = [$settings["default_category"]];
         }
 
-        if ( is_array( $categories ) && ! empty( $categories ) ) {
-            $category_ids = array();
-            foreach ( $categories as $category_name ) {
-                if ( empty( $category_name ) ) {
+        if (is_array($categories) && !empty($categories)) {
+            $category_ids = [];
+            foreach ($categories as $category_name) {
+                if (empty($category_name)) {
                     continue;
                 }
 
-                $term = term_exists( $category_name, 'product_cat' );
-                if ( ! $term ) {
-                    $term = wp_insert_term( $category_name, 'product_cat' );
+                $term = term_exists($category_name, "product_cat");
+                if (!$term) {
+                    $term = wp_insert_term($category_name, "product_cat");
                 }
 
-                if ( ! is_wp_error( $term ) ) {
-                    $category_ids[] = intval( is_array( $term ) ? $term['term_id'] : $term );
+                if (!is_wp_error($term)) {
+                    $category_ids[] = intval(
+                        is_array($term) ? $term["term_id"] : $term,
+                    );
                 }
             }
 
-            if ( ! empty( $category_ids ) ) {
-                wp_set_object_terms( $product_id, $category_ids, 'product_cat' );
+            if (!empty($category_ids)) {
+                wp_set_object_terms($product_id, $category_ids, "product_cat");
             }
         }
 
-        if ( ! is_array( $tags ) ) {
-            $tags = array_filter( array_map( 'trim', explode( ',', strval( $tags ) ) ) );
+        if (!is_array($tags)) {
+            $tags = array_filter(
+                array_map("trim", explode(",", strval($tags))),
+            );
         }
 
-        if ( is_array( $tags ) && ! empty( $tags ) ) {
-            wp_set_object_terms( $product_id, $tags, 'product_tag' );
+        if (is_array($tags) && !empty($tags)) {
+            wp_set_object_terms($product_id, $tags, "product_tag");
         }
     }
 
@@ -267,71 +360,82 @@ class Silverbene_Sync {
      * @param int   $product_id   Product ID.
      * @param array $product_data API data.
      */
-    private function assign_attributes( $product_id, $product_data ) {
-        if ( ! function_exists( 'wc_get_attribute_taxonomies' ) ) {
+    private function assign_attributes($product_id, $product_data)
+    {
+        if (!function_exists("wc_get_attribute_taxonomies")) {
             return;
         }
 
-        $attributes = $this->extract_value( $product_data, array( 'attributes', 'attribute_list', 'product_attributes' ), array() );
-        if ( empty( $attributes ) || ! is_array( $attributes ) ) {
+        $attributes = $this->extract_value(
+            $product_data,
+            ["attributes", "attribute_list", "product_attributes"],
+            [],
+        );
+        if (empty($attributes) || !is_array($attributes)) {
             return;
         }
 
-        $product_attributes = array();
+        $product_attributes = [];
 
-        foreach ( $attributes as $key => $value ) {
-            if ( is_array( $value ) ) {
-                $value = implode( ', ', $value );
+        foreach ($attributes as $key => $value) {
+            if (is_array($value)) {
+                $value = implode(", ", $value);
             }
 
-            $attribute_key = sanitize_title( $key );
-            $taxonomy_name = 'pa_' . $attribute_key;
+            $attribute_key = sanitize_title($key);
+            $taxonomy_name = "pa_" . $attribute_key;
 
-            if ( taxonomy_exists( $taxonomy_name ) ) {
+            if (taxonomy_exists($taxonomy_name)) {
                 // For global attributes.
-                $term_names = array_map( 'trim', explode( ',', $value ) );
-                $term_ids   = array();
+                $term_names = array_map("trim", explode(",", $value));
+                $term_ids = [];
 
-                foreach ( $term_names as $term_name ) {
-                    if ( empty( $term_name ) ) {
+                foreach ($term_names as $term_name) {
+                    if (empty($term_name)) {
                         continue;
                     }
 
-                    $term = term_exists( $term_name, $taxonomy_name );
-                    if ( ! $term ) {
-                        $term = wp_insert_term( $term_name, $taxonomy_name );
+                    $term = term_exists($term_name, $taxonomy_name);
+                    if (!$term) {
+                        $term = wp_insert_term($term_name, $taxonomy_name);
                     }
 
-                    if ( ! is_wp_error( $term ) ) {
-                        $term_ids[] = intval( is_array( $term ) ? $term['term_id'] : $term );
+                    if (!is_wp_error($term)) {
+                        $term_ids[] = intval(
+                            is_array($term) ? $term["term_id"] : $term,
+                        );
                     }
                 }
 
-                if ( ! empty( $term_ids ) ) {
-                    wp_set_object_terms( $product_id, $term_ids, $taxonomy_name );
+                if (!empty($term_ids)) {
+                    wp_set_object_terms($product_id, $term_ids, $taxonomy_name);
                 }
 
-                $product_attributes[ $taxonomy_name ] = array(
-                    'name'         => $taxonomy_name,
-                    'value'        => '',
-                    'is_visible'   => 1,
-                    'is_taxonomy'  => 1,
-                    'is_variation' => 0,
-                );
+                $product_attributes[$taxonomy_name] = [
+                    "name" => $taxonomy_name,
+                    "value" => "",
+                    "is_visible" => 1,
+                    "is_taxonomy" => 1,
+                    "is_variation" => 0,
+                ];
             } else {
                 // Use custom attribute.
-                $product_attributes[ $attribute_key ] = array(
-                    'name'         => wc_attribute_label( $key ),
-                    'value'        => $value,
-                    'is_visible'   => 1,
-                    'is_taxonomy'  => 0,
-                    'is_variation' => 0,
-                );
+                $product_attributes[$attribute_key] = [
+                    "name" => wc_attribute_label($key),
+                    "value" => $value,
+                    "is_visible" => 1,
+                    "is_taxonomy" => 0,
+                    "is_variation" => 0,
+                ];
             }
         }
 
-        if ( ! empty( $product_attributes ) ) {
-            update_post_meta( $product_id, '_product_attributes', $product_attributes );
+        if (!empty($product_attributes)) {
+            update_post_meta(
+                $product_id,
+                "_product_attributes",
+                $product_attributes,
+            );
         }
     }
 
@@ -342,41 +446,67 @@ class Silverbene_Sync {
      * @param array $product_data API data.
      * @param bool $is_new Whether the product is newly created.
      */
-    private function assign_images( $product_id, $product_data, $is_new ) {
-        $images = $this->extract_value( $product_data, array( 'images', 'product_images', 'gallery', 'image_urls', 'image_list', 'img_urls', 'pictures', 'photos', 'thumb' ), array() );
+    private function assign_images($product_id, $product_data, $is_new)
+    {
+        $images = $this->extract_value(
+            $product_data,
+            [
+                "images",
+                "product_images",
+                "gallery",
+                "image_urls",
+                "image_list",
+                "img_urls",
+                "pictures",
+                "photos",
+                "thumb",
+            ],
+            [],
+        );
 
-        if ( empty( $images ) ) {
+        if (empty($images)) {
             return;
         }
 
-        if ( ! is_array( $images ) ) {
-            $images = array( $images );
+        if (!is_array($images)) {
+            $images = [$images];
         }
 
-        require_once ABSPATH . 'wp-admin/includes/media.php';
-        require_once ABSPATH . 'wp-admin/includes/file.php';
-        require_once ABSPATH . 'wp-admin/includes/image.php';
+        require_once ABSPATH . "wp-admin/includes/media.php";
+        require_once ABSPATH . "wp-admin/includes/file.php";
+        require_once ABSPATH . "wp-admin/includes/image.php";
 
-        $image_ids = array();
-        foreach ( $images as $index => $image_url ) {
-            if ( empty( $image_url ) || ! filter_var( $image_url, FILTER_VALIDATE_URL ) ) {
+        $image_ids = [];
+        foreach ($images as $index => $image_url) {
+            if (
+                empty($image_url) ||
+                !filter_var($image_url, FILTER_VALIDATE_URL)
+            ) {
                 continue;
             }
 
-            $attachment_id = $this->sideload_image( $image_url, $product_id, $index );
-            if ( $attachment_id ) {
-                if ( 0 === $index ) {
-                    set_post_thumbnail( $product_id, $attachment_id );
+            $attachment_id = $this->sideload_image(
+                $image_url,
+                $product_id,
+                $index,
+            );
+            if ($attachment_id) {
+                if (0 === $index) {
+                    set_post_thumbnail($product_id, $attachment_id);
                 } else {
                     $image_ids[] = $attachment_id;
                 }
             }
         }
 
-        if ( ! empty( $image_ids ) ) {
-            update_post_meta( $product_id, '_product_image_gallery', implode( ',', $image_ids ) );
-        } elseif ( $is_new ) {
-            delete_post_meta( $product_id, '_product_image_gallery' );
+        if (!empty($image_ids)) {
+            update_post_meta(
+                $product_id,
+                "_product_image_gallery",
+                implode(",", $image_ids),
+            );
+        } elseif ($is_new) {
+            delete_post_meta($product_id, "_product_image_gallery");
         }
     }
 
@@ -389,22 +519,23 @@ class Silverbene_Sync {
      *
      * @return int|false Attachment ID.
      */
-    private function sideload_image( $image_url, $product_id, $index ) {
-        $tmp = download_url( $image_url );
+    private function sideload_image($image_url, $product_id, $index)
+    {
+        $tmp = download_url($image_url);
 
-        if ( is_wp_error( $tmp ) ) {
+        if (is_wp_error($tmp)) {
             return false;
         }
 
-        $file_array = array(
-            'name'     => basename( parse_url( $image_url, PHP_URL_PATH ) ),
-            'tmp_name' => $tmp,
-        );
+        $file_array = [
+            "name" => basename(parse_url($image_url, PHP_URL_PATH)),
+            "tmp_name" => $tmp,
+        ];
 
-        $id = media_handle_sideload( $file_array, $product_id );
+        $id = media_handle_sideload($file_array, $product_id);
 
-        if ( is_wp_error( $id ) ) {
-            @unlink( $tmp );
+        if (is_wp_error($id)) {
+            @unlink($tmp);
             return false;
         }
 
@@ -420,10 +551,11 @@ class Silverbene_Sync {
      *
      * @return mixed
      */
-    private function extract_value( $data, $keys, $default = '' ) {
-        foreach ( $keys as $key ) {
-            if ( isset( $data[ $key ] ) ) {
-                return $data[ $key ];
+    private function extract_value($data, $keys, $default = "")
+    {
+        foreach ($keys as $key) {
+            if (isset($data[$key])) {
+                return $data[$key];
             }
         }
 
