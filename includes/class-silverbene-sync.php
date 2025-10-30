@@ -359,21 +359,69 @@ class Silverbene_Sync
         $product_data,
         $settings,
     ) {
-        $categories = $this->extract_value(
+        $categories_from_api = $this->extract_value(
             $product_data,
             ["categories", "category", "product_category"],
             [],
         );
         $tags = $this->extract_value($product_data, ["tags", "tag_list"], []);
 
-        if (!is_array($categories)) {
-            $categories = array_filter(
-                array_map("trim", explode(",", strval($categories))),
-            );
+        $matched_category = null;
+        $product_title = $this->extract_value(
+            $product_data,
+            [
+                "name",
+                "title",
+                "product_name",
+                "goods_name",
+                "product_title",
+            ],
+            "",
+        );
+
+        if (!empty($product_title)) {
+            $keyword_category_map = [
+                "EARRINGS" => ["earring", "earrings"],
+                "NECKLACES" => ["necklace", "necklaces"],
+                "RINGS" => ["ring", "rings"],
+                "BRACELETS" => ["bracelet", "bracelets"],
+                "FINDINGS" => ["finding", "findings"],
+                "PEARL" => ["pearl", "pearls"],
+                "CS/MOISSANITE" => ["cs", "moissanite"],
+                "CHAINS" => ["chain", "chains"],
+                "BOX" => ["box", "boxes"],
+                "MEN'S/MEN" => ["men's", "mens", "men"],
+                "GIFT WRAP" => ["gift wrap", "giftwrap", "gift-wrap"],
+            ];
+
+            foreach ($keyword_category_map as $category_name => $keywords) {
+                foreach ($keywords as $keyword) {
+                    if ('' === $keyword) {
+                        continue;
+                    }
+
+                    if (false !== stripos($product_title, $keyword)) {
+                        $matched_category = $category_name;
+                        break 2;
+                    }
+                }
+            }
         }
 
-        if (empty($categories) && !empty($settings["default_category"])) {
-            $categories = [$settings["default_category"]];
+        if ($matched_category) {
+            $categories = [$matched_category];
+        } else {
+            $categories = $categories_from_api;
+
+            if (!is_array($categories)) {
+                $categories = array_filter(
+                    array_map("trim", explode(",", strval($categories))),
+                );
+            }
+
+            if (empty($categories) && !empty($settings["default_category"])) {
+                $categories = [$settings["default_category"]];
+            }
         }
 
         if (is_array($categories) && !empty($categories)) {
