@@ -1,6 +1,8 @@
 <?php
 class Silverbene_Sync
 {
+    private const COLOR_ATTRIBUTE_NAME = "Color";
+
     /**
      * API client instance.
      *
@@ -159,13 +161,65 @@ class Silverbene_Sync
             return false;
         }
 
+        $options = $this->get_product_options($product_data);
+
+        $price = $this->extract_value(
+            $product_data,
+            [
+                "price",
+                "regular_price",
+                "selling_price",
+                "sale_price",
+                "shop_price",
+                "market_price",
+            ],
+            0,
+        );
+
+        if (empty($price) && !empty($options[0]["price"])) {
+            $price = $options[0]["price"];
+        }
+
+        $color_variations = $this->prepare_color_variations(
+            $product_data,
+            $settings,
+            $price,
+        );
+
+        $unique_color_values = array_unique(
+            array_map(
+                function ($variation) {
+                    return strtolower($variation["color"]);
+                },
+                $color_variations,
+            ),
+        );
+        $has_color_variations = count($unique_color_values) > 1;
+        $target_type = $has_color_variations ? "variable" : "simple";
+
         $product_id = wc_get_product_id_by_sku($sku);
         $is_new = false;
 
         if ($product_id) {
             $product = wc_get_product($product_id);
+
+            if ($product && $product->get_type() !== $target_type) {
+                if ("simple" === $target_type) {
+                    $this->remove_existing_variations($product_id);
+                    wp_set_object_terms($product_id, "simple", "product_type");
+                    $product = new WC_Product_Simple($product_id);
+                } else {
+                    wp_set_object_terms($product_id, "variable", "product_type");
+                    $product = new WC_Product_Variable($product_id);
+                }
+            }
         } else {
-            $product = new WC_Product_Simple();
+            if ("variable" === $target_type) {
+                $product = new WC_Product_Variable();
+            } else {
+                $product = new WC_Product_Simple();
+            }
+
             $product->set_sku($sku);
             $is_new = true;
         }
@@ -197,24 +251,6 @@ class Silverbene_Sync
             "summary",
             "brief",
         ]);
-        $price = $this->extract_value(
-            $product_data,
-            [
-                "price",
-                "regular_price",
-                "selling_price",
-                "sale_price",
-                "shop_price",
-                "market_price",
-            ],
-            0,
-        );
-
-        // Fallback to option price if top-level price is not available
-        if (empty($price) && !empty($product_data["option"][0]["price"])) {
-            $price = $product_data["option"][0]["price"];
-        }
-
         $stock = $this->extract_value(
             $product_data,
             [
@@ -246,7 +282,12 @@ class Silverbene_Sync
             $product->set_short_description(wp_kses_post($short_desc));
         }
 
-        if (null !== $stock) {
+        if ("variable" === $target_type) {
+            $product->set_manage_stock(false);
+            $product->set_stock_status(
+                $total_stock > 0 ? "instock" : "outofstock",
+            );
+        } elseif (null !== $stock) {
             $product->set_manage_stock(true);
             $product->set_stock_quantity(intval($stock));
             $product->set_stock_status(
@@ -268,9 +309,11 @@ class Silverbene_Sync
             $product->set_height(wc_format_decimal($height));
         }
 
-        $price = $this->apply_markup($price, $settings);
-        $product->set_regular_price(wc_format_decimal($price));
-        $product->set_price(wc_format_decimal($price));
+        if ("simple" === $target_type) {
+            $price = $this->apply_markup($price, $settings);
+            $product->set_regular_price(wc_format_decimal($price));
+            $product->set_price(wc_format_decimal($price));
+        }
 
         $status = $this->extract_value(
             $product_data,
@@ -295,6 +338,14 @@ class Silverbene_Sync
             $settings,
         );
         $this->assign_images($product_id, $product_data, $is_new);
+
+        if ($has_color_variations) {
+            wp_set_object_terms($product_id, "variable", "product_type");
+            $this->sync_color_variations($product_id, $color_variations, $total_stock);
+        } else {
+            $this->remove_existing_variations($product_id);
+        }
+
         $this->assign_attributes($product_id, $product_data);
 
         update_post_meta(
@@ -505,6 +556,14 @@ class Silverbene_Sync
         }
 
         $product_attributes = [];
+        $existing_attributes = get_post_meta(
+            $product_id,
+            "_product_attributes",
+            true,
+        );
+        if (!is_array($existing_attributes)) {
+            $existing_attributes = [];
+        }
 
         foreach ($attributes as $key => $value) {
             if (is_array($value)) {
@@ -545,7 +604,9 @@ class Silverbene_Sync
                     "value" => "",
                     "is_visible" => 1,
                     "is_taxonomy" => 1,
-                    "is_variation" => 0,
+                    "is_variation" => isset($existing_attributes[$taxonomy_name]["is_variation"])
+                        ? intval($existing_attributes[$taxonomy_name]["is_variation"])
+                        : 0,
                 ];
             } else {
                 // Use custom attribute.
@@ -554,18 +615,460 @@ class Silverbene_Sync
                     "value" => $value,
                     "is_visible" => 1,
                     "is_taxonomy" => 0,
-                    "is_variation" => 0,
+                    "is_variation" => isset($existing_attributes[$attribute_key]["is_variation"])
+                        ? intval($existing_attributes[$attribute_key]["is_variation"])
+                        : 0,
                 ];
             }
         }
 
         if (!empty($product_attributes)) {
+            $attributes_to_save = $existing_attributes;
+
+            foreach ($product_attributes as $key => $attribute) {
+                $attributes_to_save[$key] = $attribute;
+            }
+
             update_post_meta(
                 $product_id,
                 "_product_attributes",
-                $product_attributes,
+                $attributes_to_save,
             );
         }
+    }
+
+    /**
+     * Create or update product variations based on available color data.
+     *
+     * @param int   $product_id        Parent product ID.
+     * @param array $color_variations  Prepared color variation payloads.
+     * @param int   $total_stock       Total stock calculated for the product.
+     */
+    private function sync_color_variations(
+        $product_id,
+        $color_variations,
+        $total_stock
+    ) {
+        if (empty($product_id) || count($color_variations) < 2) {
+            return;
+        }
+
+        $product = wc_get_product($product_id);
+        if (!$product) {
+            return;
+        }
+
+        if ("variable" !== $product->get_type()) {
+            $product = new WC_Product_Variable($product_id);
+        }
+
+        if (!$product || "variable" !== $product->get_type()) {
+            return;
+        }
+
+        $attribute_label = self::COLOR_ATTRIBUTE_NAME;
+        $attribute_key = sanitize_title($attribute_label);
+        $attribute_meta_key = "attribute_" . $attribute_key;
+
+        $existing_attributes = get_post_meta(
+            $product_id,
+            "_product_attributes",
+            true,
+        );
+        if (!is_array($existing_attributes)) {
+            $existing_attributes = [];
+        }
+
+        $attribute_values = [];
+        foreach ($color_variations as $variation) {
+            if (empty($variation["color"])) {
+                continue;
+            }
+
+            $value = $variation["color"];
+            $hash = strtolower($value);
+
+            if (!isset($attribute_values[$hash])) {
+                $attribute_values[$hash] = $value;
+            }
+        }
+
+        if (empty($attribute_values)) {
+            return;
+        }
+
+        $existing_attributes[$attribute_key] = [
+            "name" => $attribute_label,
+            "value" => implode(" | ", $attribute_values),
+            "is_visible" => 1,
+            "is_taxonomy" => 0,
+            "is_variation" => 1,
+        ];
+
+        update_post_meta(
+            $product_id,
+            "_product_attributes",
+            $existing_attributes,
+        );
+
+        $existing_children = [];
+        $child_ids = $product->get_children();
+        foreach ($child_ids as $child_id) {
+            $option_id = get_post_meta($child_id, "_silverbene_option_id", true);
+            if (!empty($option_id)) {
+                $existing_children["option:" . $option_id] = $child_id;
+            }
+
+            $child_sku = get_post_meta($child_id, "_sku", true);
+            if (!empty($child_sku)) {
+                $existing_children["sku:" . $child_sku] = $child_id;
+            }
+
+            $child_color = get_post_meta($child_id, $attribute_meta_key, true);
+            if (!empty($child_color)) {
+                $existing_children["color:" . strtolower($child_color)] = $child_id;
+            }
+        }
+
+        $used_variation_ids = [];
+        $min_price = null;
+        $has_stock = false;
+
+        foreach ($color_variations as $variation_data) {
+            $lookup_keys = [];
+            if (!empty($variation_data["option_id"])) {
+                $lookup_keys[] = "option:" . $variation_data["option_id"];
+            }
+            if (!empty($variation_data["sku"])) {
+                $lookup_keys[] = "sku:" . $variation_data["sku"];
+            }
+            if (!empty($variation_data["color"])) {
+                $lookup_keys[] = "color:" . strtolower($variation_data["color"]);
+            }
+
+            $variation_id = null;
+            foreach ($lookup_keys as $key) {
+                if (isset($existing_children[$key])) {
+                    $variation_id = $existing_children[$key];
+                    break;
+                }
+            }
+
+            if ($variation_id) {
+                $variation = new WC_Product_Variation($variation_id);
+            } else {
+                $variation = new WC_Product_Variation();
+                $variation->set_parent_id($product_id);
+            }
+
+            $variation->set_status("publish");
+
+            if (!empty($variation_data["sku"])) {
+                $variation->set_sku($variation_data["sku"]);
+            }
+
+            if (null !== $variation_data["price"]) {
+                $price = wc_format_decimal($variation_data["price"]);
+                $variation->set_regular_price($price);
+                $variation->set_price($price);
+
+                if (null === $min_price || $variation_data["price"] < $min_price) {
+                    $min_price = $variation_data["price"];
+                }
+            }
+
+            if (null !== $variation_data["stock"]) {
+                $stock_qty = intval($variation_data["stock"]);
+                $variation->set_manage_stock(true);
+                $variation->set_stock_quantity($stock_qty);
+                $variation->set_stock_status($stock_qty > 0 ? "instock" : "outofstock");
+
+                if ($stock_qty > 0) {
+                    $has_stock = true;
+                }
+            } else {
+                $variation->set_manage_stock(false);
+                $variation->set_stock_status($total_stock > 0 ? "instock" : "outofstock");
+
+                if ($total_stock > 0) {
+                    $has_stock = true;
+                }
+            }
+
+            $variation->set_attributes([
+                $attribute_meta_key => $variation_data["color"],
+            ]);
+
+            $saved_variation_id = $variation->save();
+            if (!$saved_variation_id) {
+                continue;
+            }
+
+            if (!empty($variation_data["option_id"])) {
+                update_post_meta(
+                    $saved_variation_id,
+                    "_silverbene_option_id",
+                    $variation_data["option_id"],
+                );
+            }
+
+            $used_variation_ids[] = $saved_variation_id;
+        }
+
+        $product = wc_get_product($product_id);
+        $current_children = [];
+        if ($product && method_exists($product, "get_children")) {
+            $current_children = $product->get_children();
+        }
+        foreach ($current_children as $child_id) {
+            if (!in_array($child_id, $used_variation_ids, true)) {
+                wp_delete_post($child_id, true);
+            }
+        }
+
+        if (!$product || "variable" !== $product->get_type()) {
+            $product = new WC_Product_Variable($product_id);
+        }
+
+        if (null !== $min_price) {
+            $product->set_regular_price(wc_format_decimal($min_price));
+            $product->set_price(wc_format_decimal($min_price));
+        }
+
+        $product->set_manage_stock(false);
+        $product->set_stock_status($has_stock ? "instock" : "outofstock");
+        $product->save();
+
+        if (method_exists("WC_Product_Variable", "sync")) {
+            WC_Product_Variable::sync($product_id);
+        }
+    }
+
+    /**
+     * Remove existing variations and color attribute when product should be simple.
+     *
+     * @param int $product_id Product ID.
+     */
+    private function remove_existing_variations($product_id)
+    {
+        if (empty($product_id)) {
+            return;
+        }
+
+        $product = wc_get_product($product_id);
+        if ($product && method_exists($product, "get_children")) {
+            foreach ($product->get_children() as $child_id) {
+                wp_delete_post($child_id, true);
+            }
+        }
+
+        $attributes = get_post_meta(
+            $product_id,
+            "_product_attributes",
+            true,
+        );
+        if (is_array($attributes)) {
+            $attribute_key = sanitize_title(self::COLOR_ATTRIBUTE_NAME);
+            if (isset($attributes[$attribute_key])) {
+                unset($attributes[$attribute_key]);
+                update_post_meta($product_id, "_product_attributes", $attributes);
+            }
+        }
+    }
+
+    /**
+     * Retrieve option payload array from API response.
+     *
+     * @param array $product_data Product payload.
+     *
+     * @return array
+     */
+    private function get_product_options($product_data)
+    {
+        if (!empty($product_data["options"]) && is_array($product_data["options"])) {
+            return $product_data["options"];
+        }
+
+        if (!empty($product_data["option"]) && is_array($product_data["option"])) {
+            return $product_data["option"];
+        }
+
+        return [];
+    }
+
+    /**
+     * Prepare color variation payloads from option data.
+     *
+     * @param array    $product_data   Product payload.
+     * @param array    $settings       Plugin settings for markup rules.
+     * @param float|int $fallback_price Fallback price when option price missing.
+     *
+     * @return array
+     */
+    private function prepare_color_variations(
+        $product_data,
+        $settings,
+        $fallback_price = null
+    ) {
+        $options = $this->get_product_options($product_data);
+
+        if (empty($options)) {
+            return [];
+        }
+
+        $variations = [];
+
+        foreach ($options as $option) {
+            if (!is_array($option)) {
+                continue;
+            }
+
+            $color_value = $this->extract_option_color($option);
+            if ('' === $color_value) {
+                continue;
+            }
+
+            $color_value = wc_clean($color_value);
+            $color_index = strtolower($color_value);
+
+            if (isset($variations[$color_index])) {
+                continue;
+            }
+
+            $raw_price = $this->extract_value(
+                $option,
+                [
+                    "price",
+                    "regular_price",
+                    "selling_price",
+                    "sale_price",
+                    "shop_price",
+                ],
+                null,
+            );
+
+            if ("" === $raw_price) {
+                $raw_price = null;
+            }
+
+            if (null !== $raw_price) {
+                $variation_price = $this->apply_markup($raw_price, $settings);
+            } elseif (null !== $fallback_price) {
+                $variation_price = $this->apply_markup($fallback_price, $settings);
+            } else {
+                $variation_price = null;
+            }
+
+            $raw_stock = $this->extract_value(
+                $option,
+                [
+                    "stock",
+                    "stock_quantity",
+                    "quantity",
+                    "inventory",
+                    "stock_qty",
+                    "qty",
+                    "real_qty",
+                    "option_qty",
+                ],
+                null,
+            );
+
+            if ("" === $raw_stock) {
+                $raw_stock = null;
+            }
+
+            $stock = null !== $raw_stock ? intval($raw_stock) : null;
+
+            $variations[$color_index] = [
+                "color" => $color_value,
+                "price" => $variation_price,
+                "stock" => $stock,
+                "sku" => $this->extract_value(
+                    $option,
+                    ["sku", "option_sku", "variant_sku"],
+                    "",
+                ),
+                "option_id" => $this->extract_value(
+                    $option,
+                    ["option_id", "id", "variant_id"],
+                    "",
+                ),
+            ];
+        }
+
+        return array_values($variations);
+    }
+
+    /**
+     * Attempt to extract color value from an option payload.
+     *
+     * @param array $option Option payload.
+     *
+     * @return string
+     */
+    private function extract_option_color($option)
+    {
+        if (empty($option) || !is_array($option)) {
+            return "";
+        }
+
+        $color_keys = [
+            "color",
+            "colour",
+            "color_name",
+            "colour_name",
+            "metal_color",
+            "metal_colour",
+            "plating",
+        ];
+
+        foreach ($color_keys as $key) {
+            if (empty($option[$key])) {
+                continue;
+            }
+
+            $value = $option[$key];
+            if (is_array($value)) {
+                $value = implode(", ", array_filter($value));
+            }
+
+            if ('' !== trim((string) $value)) {
+                return $value;
+            }
+        }
+
+        if (!empty($option["attributes"]) && is_array($option["attributes"])) {
+            foreach ($option["attributes"] as $key => $value) {
+                if (false === stripos((string) $key, "color")) {
+                    continue;
+                }
+
+                if (is_array($value)) {
+                    $value = implode(", ", array_filter($value));
+                }
+
+                if ('' !== trim((string) $value)) {
+                    return $value;
+                }
+            }
+        }
+
+        foreach ($option as $key => $value) {
+            if (!is_string($key) || false === stripos($key, "color")) {
+                continue;
+            }
+
+            if (is_array($value)) {
+                $value = implode(", ", array_filter($value));
+            }
+
+            if ('' !== trim((string) $value)) {
+                return $value;
+            }
+        }
+
+        return "";
     }
 
     /**
@@ -705,8 +1208,10 @@ class Silverbene_Sync
 
         $total_stock = 0;
 
-        if (!empty($product_data["option"]) && is_array($product_data["option"])) {
-            foreach ($product_data["option"] as $option) {
+        $options = $this->get_product_options($product_data);
+
+        if (!empty($options)) {
+            foreach ($options as $option) {
                 if (!is_array($option)) {
                     continue;
                 }
