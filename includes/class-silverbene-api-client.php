@@ -297,6 +297,7 @@ class Silverbene_API_Client
             "price_markup_value_below_100" => "",
             "price_markup_value_above_100" => "",
             "pre_markup_shipping_fee" => 0,
+            "sync_start_date" => "",
         ]);
     }
 
