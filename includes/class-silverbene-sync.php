@@ -804,6 +804,7 @@ class Silverbene_Sync
             $product_data,
             $settings,
         );
+        $this->assign_brand($product_id, $settings);
         $this->assign_images($product_id, $product_data, $is_new);
 
         if ($has_color_variations) {
@@ -1010,6 +1011,64 @@ class Silverbene_Sync
         if (is_array($tags) && !empty($tags)) {
             wp_set_object_terms($product_id, $tags, "product_tag");
         }
+    }
+
+    /**
+     * Assign a default brand to the product when configured.
+     *
+     * @param int   $product_id Product ID.
+     * @param array $settings   Plugin settings.
+     */
+    private function assign_brand($product_id, $settings)
+    {
+        if (empty($settings["default_brand"])) {
+            return;
+        }
+
+        $brand_name = trim(wp_strip_all_tags($settings["default_brand"]));
+
+        if ("" === $brand_name) {
+            return;
+        }
+
+        if (taxonomy_exists("product_brand")) {
+            $term = term_exists($brand_name, "product_brand");
+
+            if (!$term) {
+                $term = wp_insert_term($brand_name, "product_brand");
+            }
+
+            if (!is_wp_error($term)) {
+                $term_id = is_array($term) ? intval($term["term_id"]) : intval($term);
+                wp_set_object_terms($product_id, [$term_id], "product_brand", false);
+            }
+
+            return;
+        }
+
+        $attribute_label = __("Brand", "silverbene-api-integration");
+        $attribute_key = sanitize_title($attribute_label);
+
+        $existing_attributes = get_post_meta(
+            $product_id,
+            "_product_attributes",
+            true,
+        );
+
+        if (!is_array($existing_attributes)) {
+            $existing_attributes = [];
+        }
+
+        $existing_attributes[$attribute_key] = [
+            "name" => $attribute_label,
+            "value" => $brand_name,
+            "is_visible" => 1,
+            "is_variation" => 0,
+            "is_taxonomy" => 0,
+        ];
+
+        update_post_meta($product_id, "_product_attributes", $existing_attributes);
+        update_post_meta($product_id, "attribute_" . $attribute_key, $brand_name);
     }
 
     /**

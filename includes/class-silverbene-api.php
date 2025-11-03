@@ -156,6 +156,20 @@ class Silverbene_API {
         );
 
         add_settings_field(
+            'default_brand',
+            __( 'Brand Default', 'silverbene-api-integration' ),
+            array( $this, 'render_text_field' ),
+            'silverbene-api',
+            'silverbene_api_sync_section',
+            array(
+                'label_for'   => 'default_brand',
+                'type'        => 'text',
+                'placeholder' => __( 'Misal: Silverbene', 'silverbene-api-integration' ),
+                'description' => __( 'Brand yang akan otomatis di-set ke setiap produk yang diimpor.', 'silverbene-api-integration' ),
+            )
+        );
+
+        add_settings_field(
             'price_markup_type',
             __( 'Tipe Penyesuaian Harga', 'silverbene-api-integration' ),
             array( $this, 'render_select_field' ),
@@ -332,6 +346,7 @@ class Silverbene_API {
         $output['sync_enabled']       = ! empty( $input['sync_enabled'] );
         $output['sync_interval']      = isset( $input['sync_interval'] ) ? sanitize_key( $input['sync_interval'] ) : 'hourly';
         $output['default_category']   = isset( $input['default_category'] ) ? sanitize_text_field( $input['default_category'] ) : '';
+        $output['default_brand']      = isset( $input['default_brand'] ) ? sanitize_text_field( $input['default_brand'] ) : '';
         $output['price_markup_type']  = isset( $input['price_markup_type'] ) ? sanitize_key( $input['price_markup_type'] ) : 'none';
         $output['price_markup_value'] = isset( $input['price_markup_value'] ) ? floatval( $input['price_markup_value'] ) : 0;
         $output['pre_markup_shipping_fee'] = isset( $input['pre_markup_shipping_fee'] ) ? max( 0, floatval( $input['pre_markup_shipping_fee'] ) ) : 0;
