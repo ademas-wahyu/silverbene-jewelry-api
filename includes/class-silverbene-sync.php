@@ -70,7 +70,9 @@ class Silverbene_Sync
                 break;
             }
 
-            foreach ($products as $product_data) {
+            $grouped_products = $this->group_products_by_parent($products);
+
+            foreach ($grouped_products as $product_data) {
                 $total_stock = $this->get_total_stock($product_data);
 
                 if ($total_stock <= 0) {
@@ -244,6 +246,355 @@ class Silverbene_Sync
     }
 
     /**
+     * Group raw API products by their parent identifier so each WooCommerce product handles all children.
+     *
+     * @param array $products Raw product payloads.
+     *
+     * @return array
+     */
+    private function group_products_by_parent($products)
+    {
+        if (empty($products) || !is_array($products)) {
+            return [];
+        }
+
+        $grouped = [];
+
+        foreach ($products as $product_data) {
+            if (empty($product_data) || !is_array($product_data)) {
+                continue;
+            }
+
+            $parent_identifier = $this->get_parent_identifier($product_data);
+            $child_sku = $this->extract_value(
+                $product_data,
+                [
+                    "sku",
+                    "SKU",
+                    "product_sku",
+                    "id",
+                ],
+                "",
+            );
+
+            $group_key = $parent_identifier ?: $child_sku;
+
+            if (empty($group_key)) {
+                $encoded = function_exists("wp_json_encode")
+                    ? wp_json_encode($product_data)
+                    : json_encode($product_data);
+                $group_key = md5((string) $encoded);
+            }
+
+            if (!isset($grouped[$group_key])) {
+                $grouped[$group_key] = $product_data;
+                $grouped[$group_key]["_grouped_options"] = [];
+            } else {
+                $grouped[$group_key] = $this->merge_product_payload(
+                    $grouped[$group_key],
+                    $product_data,
+                );
+            }
+
+            if (!empty($parent_identifier)) {
+                $grouped[$group_key]["parent_sku"] = $parent_identifier;
+
+                if (
+                    empty($grouped[$group_key]["sku"]) ||
+                    $grouped[$group_key]["sku"] === $child_sku
+                ) {
+                    $grouped[$group_key]["sku"] = $parent_identifier;
+                }
+            }
+
+            $options = $this->get_product_options($product_data);
+            if (empty($options)) {
+                $generated_option = $this->convert_product_to_option(
+                    $product_data,
+                    $parent_identifier,
+                );
+
+                if (!empty($generated_option)) {
+                    $options = [$generated_option];
+                }
+            }
+
+            foreach ($options as $option) {
+                $normalized_option = $this->normalize_grouped_option(
+                    $option,
+                    $parent_identifier,
+                );
+
+                if (!empty($normalized_option)) {
+                    $grouped[$group_key]["_grouped_options"][] = $normalized_option;
+                }
+            }
+        }
+
+        foreach ($grouped as &$group_data) {
+            if (!empty($group_data["_grouped_options"])) {
+                $group_data["options"] = $this->deduplicate_grouped_options(
+                    $group_data["_grouped_options"],
+                );
+            }
+
+            unset($group_data["_grouped_options"]);
+
+            if (!empty($group_data["parent_sku"])) {
+                $group_data["_silverbene_parent_identifier"] = $group_data["parent_sku"];
+
+                if (empty($group_data["sku"])) {
+                    $group_data["sku"] = $group_data["parent_sku"];
+                }
+            }
+        }
+
+        unset($group_data);
+
+        return array_values($grouped);
+    }
+
+    /**
+     * Merge two product payloads, prioritising existing values and filling gaps with incoming data.
+     *
+     * @param array $base     Base payload.
+     * @param array $incoming Incoming payload.
+     *
+     * @return array
+     */
+    private function merge_product_payload($base, $incoming)
+    {
+        foreach ($incoming as $key => $value) {
+            if (in_array($key, ["options", "_grouped_options"], true)) {
+                continue;
+            }
+
+            if (!isset($base[$key]) || "" === $base[$key] || null === $base[$key]) {
+                $base[$key] = $value;
+            }
+        }
+
+        return $base;
+    }
+
+    /**
+     * Ensure grouped option payload contains a reference to its parent identifier.
+     *
+     * @param array  $option            Raw option payload.
+     * @param string $parent_identifier Parent identifier.
+     *
+     * @return array
+     */
+    private function normalize_grouped_option($option, $parent_identifier)
+    {
+        if (!is_array($option)) {
+            return [];
+        }
+
+        $normalized = $option;
+
+        if (!empty($parent_identifier)) {
+            $normalized["parent_sku"] = $parent_identifier;
+        } elseif (empty($normalized["parent_sku"])) {
+            $normalized["parent_sku"] = $this->get_parent_identifier($option);
+        }
+
+        return $normalized;
+    }
+
+    /**
+     * Convert a standalone product payload into an option payload when the API does not provide options.
+     *
+     * @param array  $product_data      Product payload.
+     * @param string $parent_identifier Parent identifier.
+     *
+     * @return array
+     */
+    private function convert_product_to_option($product_data, $parent_identifier = "")
+    {
+        if (empty($product_data) || !is_array($product_data)) {
+            return [];
+        }
+
+        $sku = $this->extract_value(
+            $product_data,
+            [
+                "sku",
+                "SKU",
+                "product_sku",
+                "id",
+            ],
+            "",
+        );
+
+        if (empty($sku)) {
+            return [];
+        }
+
+        $option = $product_data;
+        $option["sku"] = $sku;
+
+        if (!empty($parent_identifier)) {
+            $option["parent_sku"] = $parent_identifier;
+        }
+
+        if (empty($option["option_id"])) {
+            $option["option_id"] = $this->extract_value(
+                $product_data,
+                ["option_id", "id", "variant_id"],
+                "",
+            );
+        }
+
+        if (!isset($option["price"])) {
+            $price = $this->extract_value(
+                $product_data,
+                [
+                    "price",
+                    "regular_price",
+                    "selling_price",
+                    "sale_price",
+                    "shop_price",
+                ],
+                null,
+            );
+
+            if ("" === $price) {
+                $price = null;
+            }
+
+            if (null !== $price) {
+                $option["price"] = $price;
+            }
+        }
+
+        if (!isset($option["stock"])) {
+            $stock = $this->extract_value(
+                $product_data,
+                [
+                    "stock",
+                    "stock_quantity",
+                    "quantity",
+                    "inventory",
+                    "stock_qty",
+                    "qty",
+                    "real_qty",
+                    "option_qty",
+                ],
+                null,
+            );
+
+            if ("" === $stock) {
+                $stock = null;
+            }
+
+            if (null !== $stock) {
+                $option["stock"] = $stock;
+            }
+        }
+
+        return $option;
+    }
+
+    /**
+     * Deduplicate grouped options by their option ID or SKU.
+     *
+     * @param array $options Option payloads.
+     *
+     * @return array
+     */
+    private function deduplicate_grouped_options($options)
+    {
+        $unique = [];
+        $result = [];
+
+        foreach ($options as $option) {
+            if (!is_array($option)) {
+                continue;
+            }
+
+            $key = "";
+
+            if (!empty($option["option_id"])) {
+                $key = "option:" . $option["option_id"];
+            } elseif (!empty($option["sku"])) {
+                $key = "sku:" . $option["sku"];
+            } else {
+                $encoded = function_exists("wp_json_encode")
+                    ? wp_json_encode($option)
+                    : json_encode($option);
+                $key = "hash:" . md5((string) $encoded);
+            }
+
+            if (isset($unique[$key])) {
+                continue;
+            }
+
+            $unique[$key] = true;
+            $result[] = $option;
+        }
+
+        return $result;
+    }
+
+    /**
+     * Extract parent identifier from payload.
+     *
+     * @param array $product_data Product payload.
+     *
+     * @return string
+     */
+    private function get_parent_identifier($product_data)
+    {
+        if (empty($product_data) || !is_array($product_data)) {
+            return "";
+        }
+
+        $keys = [
+            "parent_sku",
+            "parentSku",
+            "parent_spu",
+            "parentSpu",
+            "parent_id",
+            "parentId",
+            "spu",
+            "SPU",
+            "style",
+            "style_no",
+            "style_number",
+            "style_id",
+            "goods_spu",
+            "goodsSpu",
+            "group_sku",
+            "groupSku",
+            "product_parent_sku",
+            "parentSkuCode",
+            "main_sku",
+            "mainSku",
+        ];
+
+        $identifier = $this->extract_value($product_data, $keys, "");
+
+        if (!empty($identifier)) {
+            return (string) $identifier;
+        }
+
+        if (!empty($product_data["parent"]) && is_array($product_data["parent"])) {
+            $identifier = $this->extract_value(
+                $product_data["parent"],
+                array_merge(["sku", "id"], $keys),
+                "",
+            );
+
+            if (!empty($identifier)) {
+                return (string) $identifier;
+            }
+        }
+
+        return "";
+    }
+
+    /**
      * Create or update a WooCommerce product based on Silverbene payload.
      *
      * @param array $product_data Product data from API.
@@ -309,7 +660,8 @@ class Silverbene_Sync
                 $color_variations,
             ),
         );
-        $has_color_variations = count($unique_color_values) > 1;
+        $has_color_variations = count($color_variations) > 1
+            || count($unique_color_values) > 1;
         $target_type = $has_color_variations ? "variable" : "simple";
 
         $product_id = wc_get_product_id_by_sku($sku);
@@ -468,6 +820,17 @@ class Silverbene_Sync
             "_silverbene_product_id",
             $this->extract_value($product_data, ["id", "product_id"], $sku),
         );
+
+        $parent_sku = $this->get_parent_identifier($product_data);
+        if (empty($parent_sku) && !empty($product_data["_silverbene_parent_identifier"])) {
+            $parent_sku = $product_data["_silverbene_parent_identifier"];
+        }
+
+        if (!empty($parent_sku)) {
+            $clean_parent_sku = wc_clean((string) $parent_sku);
+            update_post_meta($product_id, "_silverbene_parent_sku", $clean_parent_sku);
+            update_post_meta($product_id, "silverbene_parent_sku", $clean_parent_sku);
+        }
 
         return $product_id;
     }
@@ -796,15 +1159,18 @@ class Silverbene_Sync
 
         $attribute_values = [];
         foreach ($color_variations as $variation) {
-            if (empty($variation["color"])) {
+            $attribute_value = !empty($variation["attribute_value"])
+                ? $variation["attribute_value"]
+                : $variation["color"];
+
+            if (empty($attribute_value)) {
                 continue;
             }
 
-            $value = $variation["color"];
-            $hash = strtolower($value);
+            $hash = strtolower($attribute_value);
 
             if (!isset($attribute_values[$hash])) {
-                $attribute_values[$hash] = $value;
+                $attribute_values[$hash] = $attribute_value;
             }
         }
 
@@ -842,6 +1208,7 @@ class Silverbene_Sync
             $child_color = get_post_meta($child_id, $attribute_meta_key, true);
             if (!empty($child_color)) {
                 $existing_children["color:" . strtolower($child_color)] = $child_id;
+                $existing_children["attribute:" . strtolower($child_color)] = $child_id;
             }
         }
 
@@ -857,7 +1224,11 @@ class Silverbene_Sync
             if (!empty($variation_data["sku"])) {
                 $lookup_keys[] = "sku:" . $variation_data["sku"];
             }
-            if (!empty($variation_data["color"])) {
+            if (!empty($variation_data["attribute_value"])) {
+                $lookup_keys[] = "attribute:" . strtolower(
+                    $variation_data["attribute_value"],
+                );
+            } elseif (!empty($variation_data["color"])) {
                 $lookup_keys[] = "color:" . strtolower($variation_data["color"]);
             }
 
@@ -910,8 +1281,16 @@ class Silverbene_Sync
                 }
             }
 
+            $attribute_value = !empty($variation_data["attribute_value"])
+                ? $variation_data["attribute_value"]
+                : $variation_data["color"];
+
+            if (empty($attribute_value)) {
+                continue;
+            }
+
             $variation->set_attributes([
-                $attribute_meta_key => $variation_data["color"],
+                $attribute_meta_key => $attribute_value,
             ]);
 
             $saved_variation_id = $variation->save();
@@ -924,6 +1303,22 @@ class Silverbene_Sync
                     $saved_variation_id,
                     "_silverbene_option_id",
                     $variation_data["option_id"],
+                );
+            }
+
+            if (!empty($variation_data["parent_sku"])) {
+                update_post_meta(
+                    $saved_variation_id,
+                    "_silverbene_parent_sku",
+                    wc_clean((string) $variation_data["parent_sku"]),
+                );
+            }
+
+            if (!empty($variation_data["color"])) {
+                update_post_meta(
+                    $saved_variation_id,
+                    "_silverbene_color_label",
+                    wc_clean((string) $variation_data["color"]),
                 );
             }
 
@@ -1032,6 +1427,8 @@ class Silverbene_Sync
         }
 
         $variations = [];
+        $color_counts = [];
+        $parent_identifier = $this->get_parent_identifier($product_data);
 
         foreach ($options as $option) {
             if (!is_array($option)) {
@@ -1045,10 +1442,9 @@ class Silverbene_Sync
 
             $color_value = wc_clean($color_value);
             $color_index = strtolower($color_value);
-
-            if (isset($variations[$color_index])) {
-                continue;
-            }
+            $color_counts[$color_index] = isset($color_counts[$color_index])
+                ? intval($color_counts[$color_index]) + 1
+                : 1;
 
             $raw_price = $this->extract_value(
                 $option,
@@ -1095,20 +1491,33 @@ class Silverbene_Sync
 
             $stock = null !== $raw_stock ? intval($raw_stock) : null;
 
-            $variations[$color_index] = [
+            $option_sku = $this->extract_value(
+                $option,
+                ["sku", "option_sku", "variant_sku"],
+                "",
+            );
+
+            $attribute_value = $color_value;
+            if ($color_counts[$color_index] > 1) {
+                $attribute_value = !empty($option_sku)
+                    ? sprintf("%s (%s)", $color_value, $option_sku)
+                    : sprintf("%s #%d", $color_value, $color_counts[$color_index]);
+            }
+
+            $variations[] = [
                 "color" => $color_value,
+                "attribute_value" => wc_clean($attribute_value),
                 "price" => $variation_price,
                 "stock" => $stock,
-                "sku" => $this->extract_value(
-                    $option,
-                    ["sku", "option_sku", "variant_sku"],
-                    "",
-                ),
+                "sku" => $option_sku,
                 "option_id" => $this->extract_value(
                     $option,
                     ["option_id", "id", "variant_id"],
                     "",
                 ),
+                "parent_sku" => !empty($option["parent_sku"])
+                    ? $option["parent_sku"]
+                    : $parent_identifier,
             ];
         }
 
