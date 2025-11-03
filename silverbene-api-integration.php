@@ -86,3 +86,15 @@ function silverbene_api_deactivate() {
     }
 }
 register_deactivation_hook( __FILE__, 'silverbene_api_deactivate' );
+
+/**
+ * Uninstall hook - include uninstall procedures.
+ */
+function silverbene_api_uninstall() {
+    $uninstall_file = SILVERBENE_API_PLUGIN_PATH . 'silverbene-api-integration/uninstall.php';
+
+    if ( file_exists( $uninstall_file ) ) {
+        include $uninstall_file;
+    }
+}
+register_uninstall_hook( __FILE__, 'silverbene_api_uninstall' );
