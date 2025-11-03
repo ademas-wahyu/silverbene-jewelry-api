@@ -142,6 +142,19 @@ class Silverbene_API {
         );
 
         add_settings_field(
+            'sync_start_date',
+            __( 'Tanggal Mulai Sinkronisasi', 'silverbene-api-integration' ),
+            array( $this, 'render_text_field' ),
+            'silverbene-api',
+            'silverbene_api_sync_section',
+            array(
+                'label_for'   => 'sync_start_date',
+                'type'        => 'date',
+                'description' => __( 'Digunakan sebagai batas awal ketika opsi silverbene_last_sync_timestamp kosong. Untuk memaksa impor ulang periode lama, kosongkan nilai timestamp terakhir terlebih dahulu.', 'silverbene-api-integration' ),
+            )
+        );
+
+        add_settings_field(
             'default_category',
             __( 'Kategori Default', 'silverbene-api-integration' ),
             array( $this, 'render_text_field' ),
@@ -350,6 +363,19 @@ class Silverbene_API {
         $output['price_markup_type']  = isset( $input['price_markup_type'] ) ? sanitize_key( $input['price_markup_type'] ) : 'none';
         $output['price_markup_value'] = isset( $input['price_markup_value'] ) ? floatval( $input['price_markup_value'] ) : 0;
         $output['pre_markup_shipping_fee'] = isset( $input['pre_markup_shipping_fee'] ) ? max( 0, floatval( $input['pre_markup_shipping_fee'] ) ) : 0;
+
+        if ( isset( $input['sync_start_date'] ) ) {
+            $raw_date = trim( (string) $input['sync_start_date'] );
+
+            if ( '' === $raw_date ) {
+                $output['sync_start_date'] = '';
+            } else {
+                $timestamp = strtotime( $raw_date );
+                $is_valid  = false !== $timestamp && gmdate( 'Y-m-d', $timestamp ) === $raw_date;
+
+                $output['sync_start_date'] = $is_valid ? $raw_date : '';
+            }
+        }
 
         if ( isset( $input['price_markup_value_below_100'] ) ) {
             $raw_value = trim( (string) $input['price_markup_value_below_100'] );

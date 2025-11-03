@@ -63,11 +63,40 @@ class Silverbene_Sync
         $lookback_seconds = (defined("DAY_IN_SECONDS") ? DAY_IN_SECONDS : 86400) * self::DEFAULT_SYNC_LOOKBACK_DAYS;
         $fallback_timestamp = max(time() - $lookback_seconds, 0);
 
+        $minimum_start_timestamp = 0;
+        if (!empty($settings["sync_start_date"])) {
+            $parsed_timestamp = strtotime($settings["sync_start_date"]);
+
+            if (false !== $parsed_timestamp) {
+                $minimum_start_timestamp = min($parsed_timestamp, time());
+            }
+        }
+
         if ($last_successful_sync_timestamp <= 0) {
-            $last_successful_sync_timestamp = $fallback_timestamp;
+            if ($minimum_start_timestamp > 0) {
+                $last_successful_sync_timestamp = $minimum_start_timestamp;
+
+                if ($logger) {
+                    $logger->info(
+                        sprintf(
+                            "Menggunakan tanggal awal sinkronisasi %s berdasarkan pengaturan.",
+                            gmdate("Y-m-d", $minimum_start_timestamp)
+                        ),
+                        $context,
+                    );
+                }
+            } else {
+                $last_successful_sync_timestamp = $fallback_timestamp;
+            }
+        } elseif ($minimum_start_timestamp > 0) {
+            $last_successful_sync_timestamp = max(
+                $last_successful_sync_timestamp,
+                $minimum_start_timestamp
+            );
         }
 
         $start_date_value = max($last_successful_sync_timestamp, 0);
+        $start_date_value = min($start_date_value, time());
 
         $start_date = function_exists("wp_date")
             ? wp_date("Y-m-d", $start_date_value)
