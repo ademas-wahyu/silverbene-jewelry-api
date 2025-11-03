@@ -2,6 +2,8 @@
 class Silverbene_Sync
 {
     private const LAST_SYNC_STATUS_OPTION = "silverbene_last_sync_status";
+    private const LAST_SUCCESSFUL_SYNC_OPTION = "silverbene_last_sync_timestamp";
+    private const DEFAULT_SYNC_LOOKBACK_DAYS = 30;
     private const ADMIN_NOTICE_TRANSIENT = "silverbene_sync_admin_notice";
     private const COLOR_ATTRIBUTE_NAME = "Color";
 
@@ -49,6 +51,28 @@ class Silverbene_Sync
         $sync_failed = false;
         $failure_message = "";
 
+        $last_successful_sync_timestamp = 0;
+        if (function_exists("get_option")) {
+            $stored_timestamp = get_option(self::LAST_SUCCESSFUL_SYNC_OPTION);
+
+            if (is_numeric($stored_timestamp) && (int) $stored_timestamp > 0) {
+                $last_successful_sync_timestamp = (int) $stored_timestamp;
+            }
+        }
+
+        $lookback_seconds = (defined("DAY_IN_SECONDS") ? DAY_IN_SECONDS : 86400) * self::DEFAULT_SYNC_LOOKBACK_DAYS;
+        $fallback_timestamp = max(time() - $lookback_seconds, 0);
+
+        if ($last_successful_sync_timestamp <= 0) {
+            $last_successful_sync_timestamp = $fallback_timestamp;
+        }
+
+        $start_date_value = max($last_successful_sync_timestamp, 0);
+
+        $start_date = function_exists("wp_date")
+            ? wp_date("Y-m-d", $start_date_value)
+            : gmdate("Y-m-d", $start_date_value);
+
         do {
             /**
              * Note for Developer: The Silverbene API may time out on very large date ranges.
@@ -62,7 +86,7 @@ class Silverbene_Sync
                 "page" => $page,
                 "per_page" => $per_page,
                 "is_really_stock" => 1,
-                "start_date" => "1970-01-01",
+                "start_date" => $start_date,
                 "end_date" => wp_date("Y-m-d"),
             ]);
 
@@ -222,6 +246,10 @@ class Silverbene_Sync
         }
 
         if ($success) {
+            if (function_exists("update_option")) {
+                update_option(self::LAST_SUCCESSFUL_SYNC_OPTION, time());
+            }
+
             if (function_exists("delete_transient")) {
                 delete_transient(self::ADMIN_NOTICE_TRANSIENT);
             }
