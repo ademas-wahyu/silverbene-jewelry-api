@@ -1117,11 +1117,15 @@ class Silverbene_Sync
                 continue;
             }
 
-            $attachment_id = $this->sideload_image(
-                $image_url,
-                $product_id,
-                $index,
-            );
+            $attachment_id = $this->find_existing_attachment($image_url);
+
+            if (!$attachment_id) {
+                $attachment_id = $this->sideload_image(
+                    $image_url,
+                    $product_id,
+                    $index,
+                );
+            }
             if ($attachment_id) {
                 if (0 === $index) {
                     set_post_thumbnail($product_id, $attachment_id);
@@ -1153,6 +1157,12 @@ class Silverbene_Sync
      */
     private function sideload_image($image_url, $product_id, $index)
     {
+        $existing_attachment_id = $this->find_existing_attachment($image_url);
+
+        if ($existing_attachment_id) {
+            return $existing_attachment_id;
+        }
+
         $tmp = download_url($image_url);
 
         if (is_wp_error($tmp)) {
@@ -1171,7 +1181,51 @@ class Silverbene_Sync
             return false;
         }
 
+        update_post_meta(
+            $id,
+            "_silverbene_source_image_url",
+            esc_url_raw($image_url)
+        );
+
         return $id;
+    }
+
+    /**
+     * Find an existing attachment that matches the given source URL.
+     *
+     * @param string $image_url Image URL.
+     *
+     * @return int Attachment ID if found, 0 otherwise.
+     */
+    private function find_existing_attachment($image_url)
+    {
+        if (empty($image_url) || !filter_var($image_url, FILTER_VALIDATE_URL)) {
+            return 0;
+        }
+
+        $attachment_id = attachment_url_to_postid($image_url);
+
+        if ($attachment_id) {
+            return (int) $attachment_id;
+        }
+
+        $attachments = get_posts([
+            "post_type" => "attachment",
+            "posts_per_page" => 1,
+            "fields" => "ids",
+            "meta_query" => [
+                [
+                    "key" => "_silverbene_source_image_url",
+                    "value" => esc_url_raw($image_url),
+                ],
+            ],
+        ]);
+
+        if (!empty($attachments)) {
+            return (int) $attachments[0];
+        }
+
+        return 0;
     }
 
     /**
