@@ -1,6 +1,8 @@
 <?php
 class Silverbene_Sync
 {
+    private const LAST_SYNC_STATUS_OPTION = "silverbene_last_sync_status";
+    private const ADMIN_NOTICE_TRANSIENT = "silverbene_sync_admin_notice";
     private const COLOR_ATTRIBUTE_NAME = "Color";
 
     /**
@@ -24,16 +26,18 @@ class Silverbene_Sync
      * Fetch and sync products from Silverbene.
      *
      * @param bool $force Whether to force sync ignoring settings.
+     *
+     * @return bool True on success, false on failure.
      */
     public function sync_products($force = false)
     {
         if (!class_exists("WooCommerce")) {
-            return;
+            return false;
         }
 
         $settings = $this->client->get_settings();
         if (!$force && empty($settings["sync_enabled"])) {
-            return;
+            return true;
         }
 
         $logger = function_exists("wc_get_logger") ? wc_get_logger() : null;
@@ -42,6 +46,8 @@ class Silverbene_Sync
         $page = 1;
         $per_page = 50;
         $imported = 0;
+        $sync_failed = false;
+        $failure_message = "";
 
         do {
             /**
@@ -104,11 +110,68 @@ class Silverbene_Sync
                     continue;
                 }
 
+                $sku_for_logging = $this->extract_value(
+                    $product_data,
+                    [
+                        "sku",
+                        "SKU",
+                        "product_sku",
+                        "id",
+                    ],
+                    "",
+                );
+                $product_name_for_logging = $this->extract_value(
+                    $product_data,
+                    [
+                        "name",
+                        "title",
+                        "product_name",
+                        "goods_name",
+                        "product_title",
+                    ],
+                    "",
+                );
+
                 $product_id = $this->upsert_product(
                     $product_data,
                     $settings,
                     $total_stock,
                 );
+                if (false === $product_id) {
+                    $product_identifier = $sku_for_logging
+                        ? sprintf(
+                            /* translators: %s: product SKU. */
+                            __("produk dengan SKU %s", "silverbene-api-integration"),
+                            $sku_for_logging,
+                        )
+                        : __("produk tanpa SKU", "silverbene-api-integration");
+
+                    if (empty($sku_for_logging) && !empty($product_name_for_logging)) {
+                        $product_identifier = sprintf(
+                            /* translators: %s: product name. */
+                            __("produk \"%s\"", "silverbene-api-integration"),
+                            $product_name_for_logging,
+                        );
+                    }
+
+                    $failure_message = sprintf(
+                        /* translators: %s: product identifier. */
+                        __(
+                            "Sinkronisasi produk dihentikan karena gagal memperbarui %s. Silakan periksa log untuk detail.",
+                            "silverbene-api-integration"
+                        ),
+                        $product_identifier,
+                    );
+
+                    if ($logger) {
+                        $logger->error($failure_message, $context);
+                    }
+
+                    $sync_failed = true;
+
+                    break 2;
+                }
+
                 if ($product_id) {
                     $imported++;
                 }
@@ -117,15 +180,67 @@ class Silverbene_Sync
             $page++;
         } while (count($products) >= $per_page);
 
+        if ($sync_failed) {
+            $this->record_sync_result(false, $failure_message);
+
+            return false;
+        }
+
+        $success_message = sprintf(
+            __("Sinkronisasi produk selesai. Total produk diperbarui: %d", "silverbene-api-integration"),
+            $imported,
+        );
+
         if ($logger) {
-            $logger->info(
-                sprintf(
-                    "Sinkronisasi produk selesai. Total produk diperbarui: %d",
-                    $imported,
-                ),
-                $context,
+            $logger->info($success_message, $context);
+        }
+
+        $this->record_sync_result(true, $success_message);
+
+        return true;
+    }
+
+    /**
+     * Store the result of the latest sync for later reference.
+     *
+     * @param bool   $success Whether the sync was successful.
+     * @param string $message Descriptive message about the sync result.
+     */
+    private function record_sync_result($success, $message)
+    {
+        if (function_exists("update_option")) {
+            update_option(
+                self::LAST_SYNC_STATUS_OPTION,
+                [
+                    "success" => (bool) $success,
+                    "timestamp" => time(),
+                    "message" => $message,
+                ],
             );
         }
+
+        if ($success) {
+            if (function_exists("delete_transient")) {
+                delete_transient(self::ADMIN_NOTICE_TRANSIENT);
+            }
+
+            return;
+        }
+
+        if (!function_exists("set_transient")) {
+            return;
+        }
+
+        $expiration = defined("DAY_IN_SECONDS") ? DAY_IN_SECONDS : 86400;
+
+        set_transient(
+            self::ADMIN_NOTICE_TRANSIENT,
+            [
+                "type" => "error",
+                "message" => $message,
+            ],
+            $expiration,
+        );
     }
 
     /**
