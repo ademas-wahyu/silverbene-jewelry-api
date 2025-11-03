@@ -1,0 +1,15 @@
+{
+    "name": "silverbene/jewelry-api",
+    "type": "project",
+    "require-dev": {
+        "phpunit/phpunit": "^9.6"
+    },
+    "autoload": {
+        "files": [
+            "includes/class-silverbene-api-client.php"
+        ]
+    },
+    "scripts": {
+        "test": "phpunit"
+    }
+}
