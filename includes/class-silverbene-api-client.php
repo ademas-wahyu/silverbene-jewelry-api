@@ -169,6 +169,7 @@ class Silverbene_API_Client
             $this->get_setting("api_url", "https://s.silverbene.com/api"),
         );
         $endpoint = "/" . ltrim($endpoint, "/");
+        $url = $base_url . $endpoint;
 
         $request_args = [
             "method" => strtoupper($method),
@@ -183,14 +184,14 @@ class Silverbene_API_Client
         }
 
         if (!empty($args["query"]) && is_array($args["query"])) {
-            $endpoint = add_query_arg($args["query"], $endpoint);
+            $url = add_query_arg($args["query"], $url);
         }
 
-        $response = wp_remote_request($base_url . $endpoint, $request_args);
+        $response = wp_remote_request($url, $request_args);
 
         if (is_wp_error($response)) {
             $this->log_error("API request failed", [
-                "endpoint" => $endpoint,
+                "endpoint" => $url,
                 "error" => $response->get_error_message(),
             ]);
 
@@ -207,7 +208,7 @@ class Silverbene_API_Client
 
         if ($status_code < 200 || $status_code >= 300) {
             $this->log_error("API request returned a non-success status code", [
-                "endpoint" => $endpoint,
+                "endpoint" => $url,
                 "status_code" => $status_code,
                 "body" => $decoded,
             ]);
