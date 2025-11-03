@@ -75,5 +75,15 @@ Setelah plugin aktif, lakukan konfigurasi kredensial dan sinkronisasi:
 - Untuk debugging tambahan, aktifkan log WooCommerce (`WooCommerce → Status → Logs`) dan cari sumber `silverbene-api-sync`.
 - Pastikan SKU produk di Silverbene unik karena sinkronisasi menggunakan SKU untuk mencocokkan produk.
 
+## Pengujian
+1. Pasang dependensi pengembangan terlebih dahulu:
+   ```bash
+   composer install
+   ```
+2. Jalankan seluruh test suite PHPUnit:
+   ```bash
+   composer test
+   ```
+
 ## Dukungan
 Untuk dukungan lebih lanjut atau permintaan fitur, hubungi pengembang plugin ini melalui kanal resmi perusahaan atau repositori proyek.
