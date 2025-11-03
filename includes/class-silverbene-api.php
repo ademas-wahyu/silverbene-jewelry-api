@@ -407,12 +407,12 @@ class Silverbene_API {
 
         check_admin_referer( 'silverbene_manual_sync' );
 
-        $this->sync_handler->sync_products( true );
+        $result = $this->sync_handler->sync_products( true );
 
         $redirect_url = add_query_arg(
             array(
                 'page'       => 'silverbene-api',
-                'synced'     => 'true',
+                'synced'     => $result ? 'true' : 'failed',
                 'timestamp'  => time(),
             ),
             admin_url( 'admin.php' )
@@ -434,15 +434,43 @@ class Silverbene_API {
      * Tampilkan notifikasi admin setelah sinkronisasi manual.
      */
     public function maybe_show_admin_notice() {
-        if ( ! isset( $_GET['page'], $_GET['synced'] ) || 'silverbene-api' !== $_GET['page'] ) { // phpcs:ignore WordPress.Security.NonceVerification
+        if ( ! isset( $_GET['page'] ) || 'silverbene-api' !== $_GET['page'] ) { // phpcs:ignore WordPress.Security.NonceVerification
             return;
         }
 
-        if ( 'true' !== $_GET['synced'] ) { // phpcs:ignore WordPress.Security.NonceVerification
+        $notice_displayed = false;
+
+        if ( function_exists( 'get_transient' ) ) {
+            $notice = get_transient( 'silverbene_sync_admin_notice' );
+
+            if ( ! empty( $notice['message'] ) ) {
+                $type  = ! empty( $notice['type'] ) ? $notice['type'] : 'info';
+                $class = 'notice notice-' . ( 'error' === $type ? 'error' : ( 'success' === $type ? 'success' : 'info' ) ) . ' is-dismissible';
+
+                printf(
+                    '<div class="%1$s"><p>%2$s</p></div>',
+                    esc_attr( $class ),
+                    esc_html( $notice['message'] )
+                );
+
+                delete_transient( 'silverbene_sync_admin_notice' );
+                $notice_displayed = true;
+            }
+        }
+
+        if ( ! isset( $_GET['synced'] ) ) { // phpcs:ignore WordPress.Security.NonceVerification
             return;
         }
 
-        echo '<div class="notice notice-success is-dismissible"><p>' . esc_html__( 'Sinkronisasi produk berhasil dijalankan.', 'silverbene-api-integration' ) . '</p></div>';
+        if ( 'true' === $_GET['synced'] ) { // phpcs:ignore WordPress.Security.NonceVerification
+            echo '<div class="notice notice-success is-dismissible"><p>' . esc_html__( 'Sinkronisasi produk berhasil dijalankan.', 'silverbene-api-integration' ) . '</p></div>';
+
+            return;
+        }
+
+        if ( 'failed' === $_GET['synced'] && ! $notice_displayed ) { // phpcs:ignore WordPress.Security.NonceVerification
+            echo '<div class="notice notice-error is-dismissible"><p>' . esc_html__( 'Sinkronisasi produk gagal dijalankan. Silakan cek log untuk detail.', 'silverbene-api-integration' ) . '</p></div>';
+        }
     }
 
     /**
