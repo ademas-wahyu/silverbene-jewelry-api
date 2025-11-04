@@ -45,6 +45,10 @@ class Silverbene_Sync
         $logger = function_exists("wc_get_logger") ? wc_get_logger() : null;
         $context = ["source" => "silverbene-api-sync"];
 
+        if ($logger) {
+            $logger->info("Memulai sinkronisasi produk Silverbene.", $context);
+        }
+
         $page = 1;
         $per_page = 50;
         $imported = 0;
@@ -118,6 +122,16 @@ class Silverbene_Sync
                 "start_date" => $start_date,
                 "end_date" => wp_date("Y-m-d"),
             ]);
+
+            if (is_wp_error($products)) {
+                $error_message = $products->get_error_message();
+                $this->log_error(
+                    "Gagal mengambil produk dari API: " . $error_message,
+                    $products->get_error_data()
+                );
+                $this->record_sync_result(false, $error_message);
+                return false;
+            }
 
             if (empty($products)) {
                 break;
@@ -1952,5 +1966,22 @@ class Silverbene_Sync
         }
 
         return $default;
+    }
+
+    /**
+     * Simple logger helper for sync errors.
+     *
+     * @param string $message Log message.
+     * @param array  $context Additional context.
+     */
+    private function log_error($message, $context = [])
+    {
+        if (function_exists("wc_get_logger")) {
+            $logger = wc_get_logger();
+            $logger->error($message, [
+                "source" => "silverbene-api-sync",
+                "context" => $context,
+            ]);
+        }
     }
 }

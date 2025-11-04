@@ -31,8 +31,9 @@ class Silverbene_API_Client
     {
         $token = $this->get_setting("api_key", "");
         if (empty($token)) {
-            $this->log_error("API token is missing, cannot fetch products.");
-            return [];
+            $message = "API token is missing, cannot fetch products.";
+            $this->log_error($message);
+            return new WP_Error('silverbene_api_error', $message);
         }
 
         $query_args = $this->build_product_query_args($args);
@@ -44,8 +45,21 @@ class Silverbene_API_Client
             "query" => $query_args,
         ]);
 
+        if (is_wp_error($response)) {
+            return $response;
+        }
+
         if (empty($response)) {
             return [];
+        }
+
+        if (isset($response["code"]) && 0 !== intval($response["code"])) {
+            $error_message = isset($response['message']) ? $response['message'] : 'Unknown API error';
+            $this->log_error(
+                "Product request returned non zero status code",
+                $response,
+            );
+            return new WP_Error('silverbene_api_error', $error_message, $response);
         }
 
         $products = $this->normalize_products_response($response);
@@ -190,12 +204,12 @@ class Silverbene_API_Client
         $response = wp_remote_request($url, $request_args);
 
         if (is_wp_error($response)) {
+            $error_message = $response->get_error_message();
             $this->log_error("API request failed", [
                 "endpoint" => $url,
-                "error" => $response->get_error_message(),
+                "error" => $error_message,
             ]);
-
-            return null;
+            return new WP_Error('silverbene_http_error', $error_message, ['endpoint' => $url]);
         }
 
         $status_code = wp_remote_retrieve_response_code($response);
@@ -207,13 +221,22 @@ class Silverbene_API_Client
         }
 
         if ($status_code < 200 || $status_code >= 300) {
-            $this->log_error("API request returned a non-success status code", [
+            $error_message = sprintf(
+                __('API request returned a non-success status code %d.', 'silverbene-api-integration'),
+                $status_code
+            );
+
+            if (!empty($decoded['message'])) {
+                $error_message = $decoded['message'];
+            }
+
+            $this->log_error($error_message, [
                 "endpoint" => $url,
                 "status_code" => $status_code,
                 "body" => $decoded,
             ]);
 
-            return null;
+            return new WP_Error('silverbene_api_error', $error_message, ['status_code' => $status_code, 'body' => $decoded]);
         }
 
         return $decoded;
