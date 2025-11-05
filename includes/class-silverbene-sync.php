@@ -1635,11 +1635,17 @@ class Silverbene_Sync
                 $option_id = wc_clean((string) $option_id);
             }
 
-            $color_value = wc_clean($this->extract_option_color($option));
+            $raw_color = $this->extract_option_color($option);
+            $normalized_color = $this->normalize_color_label($raw_color);
+            $color_value = '' !== $normalized_color
+                ? $normalized_color
+                : wc_clean((string) $raw_color);
 
             // The variation attribute is anchored to the option/variant SKU so that
             // each variation can always be addressed even when color data is absent.
-            $attribute_value = !empty($option_sku) ? $option_sku : "";
+            $attribute_value = '' !== $normalized_color
+                ? $normalized_color
+                : (!empty($option_sku) ? $option_sku : "");
             if ('' === $attribute_value && !empty($option_id)) {
                 $attribute_value = $option_id;
             }
@@ -1698,6 +1704,66 @@ class Silverbene_Sync
             return "";
         }
 
+        $structured_option_sets = [
+            ["Option1 Name", "Option1 Value"],
+            ["Option 1 Name", "Option 1 Value"],
+            ["option1_name", "option1_value"],
+            ["option_1_name", "option_1_value"],
+            ["Option1Name", "Option1Value"],
+        ];
+
+        foreach ($structured_option_sets as $pair) {
+            [$name_key, $value_key] = $pair;
+
+            if (empty($option[$name_key]) || empty($option[$value_key])) {
+                continue;
+            }
+
+            $option_name = is_scalar($option[$name_key])
+                ? (string) $option[$name_key]
+                : "";
+            if ('' === trim($option_name)) {
+                continue;
+            }
+
+            if (false === stripos($option_name, "color")) {
+                continue;
+            }
+
+            $value = $option[$value_key];
+            if (is_array($value)) {
+                $value = implode(", ", array_filter($value));
+            }
+
+            if ('' !== trim((string) $value)) {
+                return $value;
+            }
+        }
+
+        $nested_option_keys = ["Option1", "option1", "option_1"];
+        foreach ($nested_option_keys as $nested_key) {
+            if (empty($option[$nested_key]) || !is_array($option[$nested_key])) {
+                continue;
+            }
+
+            $nested = $option[$nested_key];
+            $name = '';
+            if (!empty($nested['name'])) {
+                $name = is_scalar($nested['name']) ? (string) $nested['name'] : '';
+            }
+
+            if ('' !== $name && false !== stripos($name, 'color')) {
+                $value = $nested['value'] ?? '';
+                if (is_array($value)) {
+                    $value = implode(", ", array_filter($value));
+                }
+
+                if ('' !== trim((string) $value)) {
+                    return $value;
+                }
+            }
+        }
+
         $color_keys = [
             "color",
             "colour",
@@ -1754,6 +1820,71 @@ class Silverbene_Sync
         }
 
         return "";
+    }
+
+    /**
+     * Normalize raw color label into a clean, human readable value.
+     *
+     * @param string $color Raw color string from API.
+     *
+     * @return string
+     */
+    private function normalize_color_label($color)
+    {
+        if (is_array($color)) {
+            $color = implode(", ", array_filter($color));
+        }
+
+        if (!is_scalar($color)) {
+            return "";
+        }
+
+        $color = trim((string) $color);
+        if ('' === $color) {
+            return "";
+        }
+
+        $color_lower = strtolower($color);
+        $color_map = [
+            'rose gold' => 'Rose Gold',
+            'yellow gold' => 'Yellow Gold',
+            'white gold' => 'White Gold',
+            'silver' => 'Silver',
+            'gold' => 'Gold',
+            'black' => 'Black',
+            'blue' => 'Blue',
+            'green' => 'Green',
+            'red' => 'Red',
+            'pink' => 'Pink',
+            'purple' => 'Purple',
+            'champagne' => 'Champagne',
+            'multicolor' => 'Multicolor',
+            'multi color' => 'Multicolor',
+            'two tone' => 'Two Tone',
+        ];
+
+        foreach ($color_map as $needle => $label) {
+            if (false !== strpos($color_lower, $needle)) {
+                return wc_clean($label);
+            }
+        }
+
+        $cleaned = preg_replace('/\b\d+\s*(?:k|kt|karat)?\b/i', '', $color);
+        $cleaned = preg_replace('/[^\pL\s\/\-&]/u', ' ', $cleaned);
+        $cleaned = preg_replace('/\s+/', ' ', $cleaned);
+        $cleaned = trim($cleaned);
+
+        if ('' === $cleaned) {
+            return "";
+        }
+
+        if (function_exists('mb_convert_case')) {
+            $cleaned = mb_convert_case($cleaned, MB_CASE_TITLE, 'UTF-8');
+        } else {
+            $cleaned = ucwords(strtolower($cleaned));
+        }
+
+        return wc_clean($cleaned);
     }
 
     /**
