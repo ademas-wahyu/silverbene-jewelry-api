@@ -1802,6 +1802,66 @@ class Silverbene_Sync
             }
         }
 
+        $attribute_collections = [
+            "attribute",
+            "attributes",
+            "Attribute",
+            "attribute_list",
+            "attributeList",
+            "AttributeList",
+            "attribute_data",
+        ];
+
+        foreach ($attribute_collections as $attribute_key) {
+            if (empty($option[$attribute_key]) || !is_array($option[$attribute_key])) {
+                continue;
+            }
+
+            $attribute_entries = $option[$attribute_key];
+            if (isset($attribute_entries["name"]) || isset($attribute_entries["Name"])) {
+                $attribute_entries = [$attribute_entries];
+            }
+
+            foreach ($attribute_entries as $attribute_entry) {
+                if (empty($attribute_entry) || !is_array($attribute_entry)) {
+                    continue;
+                }
+
+                $attribute_name = '';
+                foreach (["name", "Name", "label", "Label"] as $name_key) {
+                    if (!empty($attribute_entry[$name_key]) && is_scalar($attribute_entry[$name_key])) {
+                        $attribute_name = (string) $attribute_entry[$name_key];
+                        break;
+                    }
+                }
+
+                if ('' === trim($attribute_name) || false === stripos($attribute_name, "color")) {
+                    continue;
+                }
+
+                $attribute_value = '';
+                foreach (["value", "Value", "values", "Values"] as $value_key) {
+                    if (isset($attribute_entry[$value_key])) {
+                        $attribute_value = $attribute_entry[$value_key];
+                        break;
+                    }
+                }
+
+                if (is_array($attribute_value)) {
+                    $attribute_value = implode(", ", array_filter($attribute_value));
+                }
+
+                if (!is_scalar($attribute_value)) {
+                    continue;
+                }
+
+                $attribute_value = wc_clean((string) $attribute_value);
+                if ('' !== trim($attribute_value)) {
+                    return $attribute_value;
+                }
+            }
+        }
+
         foreach ($option as $key => $value) {
             if (!is_string($key) || false === stripos($key, "color")) {
                 continue;
