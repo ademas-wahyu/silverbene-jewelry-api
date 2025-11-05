@@ -6,7 +6,7 @@ class Silverbene_Sync
     private const DEFAULT_SYNC_LOOKBACK_DAYS = 30;
     private const ADMIN_NOTICE_TRANSIENT = "silverbene_sync_admin_notice";
     private const COLOR_ATTRIBUTE_NAME = "Color";
-    private const VARIATION_ATTRIBUTE_NAME = "Variant SKU";
+    private const VARIATION_ATTRIBUTE_NAME = "Variant Color";
 
     /**
      * API client instance.
@@ -1643,12 +1643,9 @@ class Silverbene_Sync
 
             // The variation attribute is anchored to the option/variant SKU so that
             // each variation can always be addressed even when color data is absent.
-            $attribute_value = '' !== $normalized_color
-                ? $normalized_color
+            $attribute_value = '' !== $color_value
+                ? $color_value
                 : (!empty($option_sku) ? $option_sku : "");
-            if ('' === $attribute_value && !empty($option_id)) {
-                $attribute_value = $option_id;
-            }
 
             if ('' === $attribute_value) {
                 $fallback_base = !empty($parent_identifier)
