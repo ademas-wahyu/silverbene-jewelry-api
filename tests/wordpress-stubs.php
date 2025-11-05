@@ -181,3 +181,22 @@ if (!function_exists('delete_option')) {
         return true;
     }
 }
+
+if (!function_exists('wc_clean')) {
+    function wc_clean($var)
+    {
+        if (is_array($var)) {
+            return array_map('wc_clean', $var);
+        }
+
+        if (!is_scalar($var)) {
+            return $var;
+        }
+
+        $value = strip_tags((string) $var);
+        $value = preg_replace('/[\r\n\t]+/', ' ', $value);
+        $value = trim($value);
+
+        return $value;
+    }
+}
