@@ -6,6 +6,7 @@ class Silverbene_Sync
     private const DEFAULT_SYNC_LOOKBACK_DAYS = 30;
     private const ADMIN_NOTICE_TRANSIENT = "silverbene_sync_admin_notice";
     private const COLOR_ATTRIBUTE_NAME = "Color";
+    private const VARIATION_ATTRIBUTE_NAME = "Variant SKU";
 
     /**
      * API client instance.
@@ -723,17 +724,10 @@ class Silverbene_Sync
             $price,
         );
 
-        $unique_color_values = array_unique(
-            array_map(
-                function ($variation) {
-                    return strtolower($variation["color"]);
-                },
-                $color_variations,
-            ),
-        );
-        $has_color_variations = count($color_variations) > 1
-            || count($unique_color_values) > 1;
-        $target_type = $has_color_variations ? "variable" : "simple";
+        $has_variations = !empty($color_variations);
+        // Always treat products with at least one option as variable so that
+        // the catalog consistently exposes variation-level stock and pricing.
+        $target_type = $has_variations ? "variable" : "simple";
 
         $product_id = wc_get_product_id_by_sku($sku);
         $is_new = false;
@@ -878,7 +872,7 @@ class Silverbene_Sync
         $this->assign_brand($product_id, $settings);
         $this->assign_images($product_id, $product_data, $is_new);
 
-        if ($has_color_variations) {
+        if ($has_variations) {
             wp_set_object_terms($product_id, "variable", "product_type");
             $this->sync_color_variations($product_id, $color_variations, $total_stock);
         } else {
@@ -1246,7 +1240,7 @@ class Silverbene_Sync
     }
 
     /**
-     * Create or update product variations based on available color data.
+     * Create or update product variations based on available option data.
      *
      * @param int   $product_id        Parent product ID.
      * @param array $color_variations  Prepared color variation payloads.
@@ -1257,7 +1251,7 @@ class Silverbene_Sync
         $color_variations,
         $total_stock
     ) {
-        if (empty($product_id) || count($color_variations) < 2) {
+        if (empty($product_id) || empty($color_variations)) {
             return;
         }
 
@@ -1274,7 +1268,7 @@ class Silverbene_Sync
             return;
         }
 
-        $attribute_label = self::COLOR_ATTRIBUTE_NAME;
+        $attribute_label = self::VARIATION_ATTRIBUTE_NAME;
         $attribute_key = sanitize_title($attribute_label);
         $attribute_meta_key = "attribute_" . $attribute_key;
 
@@ -1287,11 +1281,16 @@ class Silverbene_Sync
             $existing_attributes = [];
         }
 
+        $legacy_color_key = sanitize_title(self::COLOR_ATTRIBUTE_NAME);
+        if (isset($existing_attributes[$legacy_color_key])) {
+            unset($existing_attributes[$legacy_color_key]);
+        }
+
         $attribute_values = [];
         foreach ($color_variations as $variation) {
             $attribute_value = !empty($variation["attribute_value"])
                 ? $variation["attribute_value"]
-                : $variation["color"];
+                : "";
 
             if (empty($attribute_value)) {
                 continue;
@@ -1335,10 +1334,9 @@ class Silverbene_Sync
                 $existing_children["sku:" . $child_sku] = $child_id;
             }
 
-            $child_color = get_post_meta($child_id, $attribute_meta_key, true);
-            if (!empty($child_color)) {
-                $existing_children["color:" . strtolower($child_color)] = $child_id;
-                $existing_children["attribute:" . strtolower($child_color)] = $child_id;
+            $child_attribute = get_post_meta($child_id, $attribute_meta_key, true);
+            if (!empty($child_attribute)) {
+                $existing_children["attribute:" . strtolower($child_attribute)] = $child_id;
             }
         }
 
@@ -1358,8 +1356,6 @@ class Silverbene_Sync
                 $lookup_keys[] = "attribute:" . strtolower(
                     $variation_data["attribute_value"],
                 );
-            } elseif (!empty($variation_data["color"])) {
-                $lookup_keys[] = "color:" . strtolower($variation_data["color"]);
             }
 
             $variation_id = null;
@@ -1413,7 +1409,7 @@ class Silverbene_Sync
 
             $attribute_value = !empty($variation_data["attribute_value"])
                 ? $variation_data["attribute_value"]
-                : $variation_data["color"];
+                : "";
 
             if (empty($attribute_value)) {
                 continue;
@@ -1428,13 +1424,11 @@ class Silverbene_Sync
                 continue;
             }
 
-            if (!empty($variation_data["option_id"])) {
-                update_post_meta(
-                    $saved_variation_id,
-                    "_silverbene_option_id",
-                    $variation_data["option_id"],
-                );
-            }
+            update_post_meta(
+                $saved_variation_id,
+                "_silverbene_option_id",
+                wc_clean((string) $variation_data["option_id"]),
+            );
 
             if (!empty($variation_data["parent_sku"])) {
                 update_post_meta(
@@ -1450,6 +1444,8 @@ class Silverbene_Sync
                     "_silverbene_color_label",
                     wc_clean((string) $variation_data["color"]),
                 );
+            } else {
+                delete_post_meta($saved_variation_id, "_silverbene_color_label");
             }
 
             $used_variation_ids[] = $saved_variation_id;
@@ -1508,9 +1504,20 @@ class Silverbene_Sync
             true,
         );
         if (is_array($attributes)) {
-            $attribute_key = sanitize_title(self::COLOR_ATTRIBUTE_NAME);
-            if (isset($attributes[$attribute_key])) {
-                unset($attributes[$attribute_key]);
+            $attribute_slugs = [
+                sanitize_title(self::COLOR_ATTRIBUTE_NAME),
+                sanitize_title(self::VARIATION_ATTRIBUTE_NAME),
+            ];
+
+            $updated = false;
+            foreach ($attribute_slugs as $attribute_key) {
+                if (isset($attributes[$attribute_key])) {
+                    unset($attributes[$attribute_key]);
+                    $updated = true;
+                }
+            }
+
+            if ($updated) {
                 update_post_meta($product_id, "_product_attributes", $attributes);
             }
         }
@@ -1537,7 +1544,7 @@ class Silverbene_Sync
     }
 
     /**
-     * Prepare color variation payloads from option data.
+     * Prepare variation payloads from option data.
      *
      * @param array    $product_data   Product payload.
      * @param array    $settings       Plugin settings for markup rules.
@@ -1557,24 +1564,16 @@ class Silverbene_Sync
         }
 
         $variations = [];
-        $color_counts = [];
+        $attribute_counts = [];
         $parent_identifier = $this->get_parent_identifier($product_data);
+        $option_index = 0;
 
         foreach ($options as $option) {
             if (!is_array($option)) {
                 continue;
             }
 
-            $color_value = $this->extract_option_color($option);
-            if ('' === $color_value) {
-                continue;
-            }
-
-            $color_value = wc_clean($color_value);
-            $color_index = strtolower($color_value);
-            $color_counts[$color_index] = isset($color_counts[$color_index])
-                ? intval($color_counts[$color_index]) + 1
-                : 1;
+            $option_index++;
 
             $raw_price = $this->extract_value(
                 $option,
@@ -1627,11 +1626,47 @@ class Silverbene_Sync
                 "",
             );
 
-            $attribute_value = $color_value;
-            if ($color_counts[$color_index] > 1) {
-                $attribute_value = !empty($option_sku)
-                    ? sprintf("%s (%s)", $color_value, $option_sku)
-                    : sprintf("%s #%d", $color_value, $color_counts[$color_index]);
+            $option_id = $this->extract_value(
+                $option,
+                ["option_id", "id", "variant_id"],
+                "",
+            );
+            if ('' !== $option_id) {
+                $option_id = wc_clean((string) $option_id);
+            }
+
+            $color_value = wc_clean($this->extract_option_color($option));
+
+            // The variation attribute is anchored to the option/variant SKU so that
+            // each variation can always be addressed even when color data is absent.
+            $attribute_value = !empty($option_sku) ? $option_sku : "";
+            if ('' === $attribute_value && !empty($option_id)) {
+                $attribute_value = $option_id;
+            }
+
+            if ('' === $attribute_value) {
+                $fallback_base = !empty($parent_identifier)
+                    ? $parent_identifier
+                    : $this->extract_value(
+                        $product_data,
+                        ["sku", "SKU", "product_sku", "id"],
+                        "variant",
+                    );
+                // Ensure every option surfaces a stable attribute value even when
+                // the API omits variant-specific identifiers.
+                $attribute_value = sprintf("%s-%d", $fallback_base, $option_index);
+            }
+
+            $attribute_key = strtolower($attribute_value);
+            if (isset($attribute_counts[$attribute_key])) {
+                $attribute_counts[$attribute_key]++;
+                $attribute_value = sprintf(
+                    "%s-%d",
+                    $attribute_value,
+                    $attribute_counts[$attribute_key],
+                );
+            } else {
+                $attribute_counts[$attribute_key] = 1;
             }
 
             $variations[] = [
@@ -1640,11 +1675,7 @@ class Silverbene_Sync
                 "price" => $variation_price,
                 "stock" => $stock,
                 "sku" => $option_sku,
-                "option_id" => $this->extract_value(
-                    $option,
-                    ["option_id", "id", "variant_id"],
-                    "",
-                ),
+                "option_id" => $option_id,
                 "parent_sku" => !empty($option["parent_sku"])
                     ? $option["parent_sku"]
                     : $parent_identifier,
