@@ -94,6 +94,13 @@ if (!function_exists('wp_json_encode')) {
     }
 }
 
+if (!function_exists('__')) {
+    function __($text, $domain = null)
+    {
+        return $text;
+    }
+}
+
 if (!class_exists('WP_Error')) {
     class WP_Error
     {
