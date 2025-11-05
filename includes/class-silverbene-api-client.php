@@ -827,15 +827,27 @@ class Silverbene_API_Client
             ],
         ]);
 
+        if (is_wp_error($response)) {
+            $this->log_error(
+                "Option quantity request returned WP_Error",
+                ["error_message" => $response->get_error_message()],
+            );
+            return [];
+        }
+
         if (empty($response)) {
             return [];
         }
 
-        if (isset($response["code"]) && 0 !== intval($response["code"])) {
+        if (is_array($response) && isset($response["code"]) && 0 !== intval($response["code"])) {
             $this->log_error(
                 "Option quantity request returned non zero status code",
                 $response,
             );
+            return [];
+        }
+
+        if (!is_array($response)) {
             return [];
         }
 
