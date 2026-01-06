@@ -185,9 +185,13 @@ class Silverbene_API_Client
         $endpoint = "/" . ltrim($endpoint, "/");
         $url = $base_url . $endpoint;
 
+        $default_timeout = 60;
+        $timeout = isset($args["timeout"]) ? intval($args["timeout"]) : $default_timeout;
+        $timeout = max(5, min($timeout, 120));
+
         $request_args = [
             "method" => strtoupper($method),
-            "timeout" => 300,
+            "timeout" => $timeout,
             "headers" => $this->prepare_headers(
                 isset($args["headers"]) ? $args["headers"] : [],
             ),

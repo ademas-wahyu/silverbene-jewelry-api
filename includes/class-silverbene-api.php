@@ -34,7 +34,6 @@ class Silverbene_API {
         add_action( 'admin_post_silverbene_manual_sync', array( $this, 'handle_manual_sync' ) );
         add_action( 'update_option_' . SILVERBENE_API_SETTINGS_OPTION, array( $this, 'after_settings_saved' ), 10, 2 );
         add_filter( 'cron_schedules', array( $this, 'register_custom_cron_schedules' ) );
-        add_action( 'init', array( $this, 'maybe_reschedule_cron' ) );
         add_action( 'admin_notices', array( $this, 'maybe_show_admin_notice' ) );
     }
 
@@ -342,26 +341,36 @@ class Silverbene_API {
     public function sanitize_settings( $input ) {
         $output = get_option( SILVERBENE_API_SETTINGS_OPTION, array() );
 
+        $allowed_intervals = array( 'fifteen_minutes', 'hourly', 'twicedaily', 'daily' );
+        $allowed_markup_types = array( 'percentage', 'fixed', 'none' );
+
         if ( isset( $input['api_url'] ) ) {
-            $output['api_url'] = esc_url_raw( trim( $input['api_url'] ) );
+            $raw_url = esc_url_raw( trim( $input['api_url'] ) );
+            if ( '' !== $raw_url && filter_var( $raw_url, FILTER_VALIDATE_URL ) ) {
+                $output['api_url'] = $raw_url;
+            }
         }
 
-        // Hanya perbarui kunci API jika ada nilai baru yang dimasukkan.
         if ( ! empty( $input['api_key'] ) ) {
             $output['api_key'] = sanitize_text_field( $input['api_key'] );
         }
 
-        // Hanya perbarui secret API jika ada nilai baru yang dimasukkan.
         if ( ! empty( $input['api_secret'] ) ) {
             $output['api_secret'] = sanitize_text_field( $input['api_secret'] );
         }
 
-        $output['sync_enabled']       = ! empty( $input['sync_enabled'] );
-        $output['sync_interval']      = isset( $input['sync_interval'] ) ? sanitize_key( $input['sync_interval'] ) : 'hourly';
-        $output['default_category']   = isset( $input['default_category'] ) ? sanitize_text_field( $input['default_category'] ) : '';
-        $output['default_brand']      = isset( $input['default_brand'] ) ? sanitize_text_field( $input['default_brand'] ) : '';
-        $output['price_markup_type']  = isset( $input['price_markup_type'] ) ? sanitize_key( $input['price_markup_type'] ) : 'none';
-        $output['price_markup_value'] = isset( $input['price_markup_value'] ) ? floatval( $input['price_markup_value'] ) : 0;
+        $output['sync_enabled'] = ! empty( $input['sync_enabled'] );
+
+        $sync_interval = isset( $input['sync_interval'] ) ? sanitize_key( $input['sync_interval'] ) : 'hourly';
+        $output['sync_interval'] = in_array( $sync_interval, $allowed_intervals, true ) ? $sync_interval : 'hourly';
+
+        $output['default_category'] = isset( $input['default_category'] ) ? sanitize_text_field( $input['default_category'] ) : '';
+        $output['default_brand'] = isset( $input['default_brand'] ) ? sanitize_text_field( $input['default_brand'] ) : '';
+
+        $markup_type = isset( $input['price_markup_type'] ) ? sanitize_key( $input['price_markup_type'] ) : 'none';
+        $output['price_markup_type'] = in_array( $markup_type, $allowed_markup_types, true ) ? $markup_type : 'none';
+
+        $output['price_markup_value'] = isset( $input['price_markup_value'] ) ? max( 0, floatval( $input['price_markup_value'] ) ) : 0;
         $output['pre_markup_shipping_fee'] = isset( $input['pre_markup_shipping_fee'] ) ? max( 0, floatval( $input['pre_markup_shipping_fee'] ) ) : 0;
 
         if ( isset( $input['sync_start_date'] ) ) {
@@ -397,7 +406,10 @@ class Silverbene_API {
 
         foreach ( $endpoints as $endpoint ) {
             if ( ! empty( $input[ $endpoint ] ) ) {
-                $output[ $endpoint ] = sanitize_text_field( trim( $input[ $endpoint ] ) );
+                $sanitized = sanitize_text_field( trim( $input[ $endpoint ] ) );
+                if ( preg_match( '/^\/[a-zA-Z0-9_\-\/]*$/', $sanitized ) ) {
+                    $output[ $endpoint ] = $sanitized;
+                }
             }
         }
 
@@ -412,28 +424,201 @@ class Silverbene_API {
             return;
         }
 
+        $active_tab = isset( $_GET['tab'] ) ? sanitize_key( $_GET['tab'] ) : 'settings';
+        $allowed_tabs = array( 'settings', 'documentation' );
+        if ( ! in_array( $active_tab, $allowed_tabs, true ) ) {
+            $active_tab = 'settings';
+        }
+
         $settings = get_option( SILVERBENE_API_SETTINGS_OPTION, array() );
         ?>
         <div class="wrap">
-            <h1><?php esc_html_e( 'Pengaturan API Silverbene', 'silverbene-api-integration' ); ?></h1>
-            <p><?php esc_html_e( 'Masukkan kredensial API dan konfigurasi sinkronisasi agar produk Silverbene otomatis tersinkron dengan WooCommerce Anda.', 'silverbene-api-integration' ); ?></p>
-            <form method="post" action="options.php">
+            <h1><?php esc_html_e( 'Silverbene API Integration', 'silverbene-api-integration' ); ?></h1>
+
+            <nav class="nav-tab-wrapper">
+                <a href="<?php echo esc_url( admin_url( 'admin.php?page=silverbene-api&tab=settings' ) ); ?>" 
+                   class="nav-tab <?php echo 'settings' === $active_tab ? 'nav-tab-active' : ''; ?>">
+                    <?php esc_html_e( 'Pengaturan', 'silverbene-api-integration' ); ?>
+                </a>
+                <a href="<?php echo esc_url( admin_url( 'admin.php?page=silverbene-api&tab=documentation' ) ); ?>" 
+                   class="nav-tab <?php echo 'documentation' === $active_tab ? 'nav-tab-active' : ''; ?>">
+                    <?php esc_html_e( 'Dokumentasi', 'silverbene-api-integration' ); ?>
+                </a>
+            </nav>
+
+            <div class="tab-content" style="margin-top: 20px;">
                 <?php
-                settings_fields( 'silverbene_api_settings_group' );
-                do_settings_sections( 'silverbene-api' );
-                submit_button();
+                if ( 'settings' === $active_tab ) {
+                    $this->render_settings_tab();
+                } elseif ( 'documentation' === $active_tab ) {
+                    $this->render_documentation_tab();
+                }
                 ?>
-            </form>
+            </div>
+        </div>
+        <?php
+    }
 
-            <hr />
+    /**
+     * Render settings tab content.
+     */
+    private function render_settings_tab() {
+        ?>
+        <p><?php esc_html_e( 'Masukkan kredensial API dan konfigurasi sinkronisasi agar produk Silverbene otomatis tersinkron dengan WooCommerce Anda.', 'silverbene-api-integration' ); ?></p>
+        <form method="post" action="options.php">
+            <?php
+            settings_fields( 'silverbene_api_settings_group' );
+            do_settings_sections( 'silverbene-api' );
+            submit_button();
+            ?>
+        </form>
 
-            <h2><?php esc_html_e( 'Sinkronisasi Manual', 'silverbene-api-integration' ); ?></h2>
-            <p><?php esc_html_e( 'Klik tombol di bawah untuk langsung menarik data produk terbaru dari Silverbene.', 'silverbene-api-integration' ); ?></p>
-            <form method="post" action="<?php echo esc_url( admin_url( 'admin-post.php' ) ); ?>">
-                <?php wp_nonce_field( 'silverbene_manual_sync' ); ?>
-                <input type="hidden" name="action" value="silverbene_manual_sync" />
-                <?php submit_button( __( 'Sinkronisasi Sekarang', 'silverbene-api-integration' ), 'secondary' ); ?>
-            </form>
+        <hr />
+
+        <h2><?php esc_html_e( 'Sinkronisasi Manual', 'silverbene-api-integration' ); ?></h2>
+        <p><?php esc_html_e( 'Klik tombol di bawah untuk langsung menarik data produk terbaru dari Silverbene.', 'silverbene-api-integration' ); ?></p>
+        <form method="post" action="<?php echo esc_url( admin_url( 'admin-post.php' ) ); ?>">
+            <?php wp_nonce_field( 'silverbene_manual_sync' ); ?>
+            <input type="hidden" name="action" value="silverbene_manual_sync" />
+            <?php submit_button( __( 'Sinkronisasi Sekarang', 'silverbene-api-integration' ), 'secondary' ); ?>
+        </form>
+        <?php
+    }
+
+    /**
+     * Render documentation tab content.
+     */
+    private function render_documentation_tab() {
+        $last_sync = get_option( 'silverbene_last_sync_status', array() );
+        $last_sync_time = isset( $last_sync['timestamp'] ) ? wp_date( 'Y-m-d H:i:s', $last_sync['timestamp'] ) : '-';
+        $last_sync_status = isset( $last_sync['success'] ) ? ( $last_sync['success'] ? __( 'Berhasil', 'silverbene-api-integration' ) : __( 'Gagal', 'silverbene-api-integration' ) ) : '-';
+        ?>
+        <style>
+            .silverbene-docs h2 { border-bottom: 1px solid #ccc; padding-bottom: 10px; margin-top: 30px; }
+            .silverbene-docs h2:first-child { margin-top: 0; }
+            .silverbene-docs table { border-collapse: collapse; width: 100%; max-width: 800px; }
+            .silverbene-docs th, .silverbene-docs td { border: 1px solid #ddd; padding: 10px; text-align: left; }
+            .silverbene-docs th { background: #f5f5f5; }
+            .silverbene-docs code { background: #f0f0f0; padding: 2px 6px; border-radius: 3px; }
+            .silverbene-docs .status-box { background: #fff; border: 1px solid #ccc; padding: 15px; margin: 10px 0; max-width: 600px; }
+            .silverbene-docs .status-success { border-left: 4px solid #46b450; }
+            .silverbene-docs .status-error { border-left: 4px solid #dc3232; }
+            .silverbene-docs ul { margin-left: 20px; }
+            .silverbene-docs li { margin-bottom: 5px; }
+        </style>
+
+        <div class="silverbene-docs">
+            <h2><?php esc_html_e( 'Status Sinkronisasi', 'silverbene-api-integration' ); ?></h2>
+            <div class="status-box <?php echo isset( $last_sync['success'] ) && $last_sync['success'] ? 'status-success' : 'status-error'; ?>">
+                <p><strong><?php esc_html_e( 'Sinkronisasi Terakhir:', 'silverbene-api-integration' ); ?></strong> <?php echo esc_html( $last_sync_time ); ?></p>
+                <p><strong><?php esc_html_e( 'Status:', 'silverbene-api-integration' ); ?></strong> <?php echo esc_html( $last_sync_status ); ?></p>
+                <?php if ( isset( $last_sync['message'] ) ) : ?>
+                    <p><strong><?php esc_html_e( 'Pesan:', 'silverbene-api-integration' ); ?></strong> <?php echo esc_html( $last_sync['message'] ); ?></p>
+                <?php endif; ?>
+            </div>
+
+            <h2><?php esc_html_e( 'Tentang Plugin', 'silverbene-api-integration' ); ?></h2>
+            <p><?php esc_html_e( 'Plugin Silverbene API Integration menghubungkan toko WooCommerce Anda dengan layanan Silverbene untuk sinkronisasi produk dan pesanan secara otomatis.', 'silverbene-api-integration' ); ?></p>
+
+            <h2><?php esc_html_e( 'Fitur Utama', 'silverbene-api-integration' ); ?></h2>
+            <ul>
+                <li><?php esc_html_e( 'Sinkronisasi produk otomatis dari Silverbene ke WooCommerce (harga, stok, gambar, kategori, atribut)', 'silverbene-api-integration' ); ?></li>
+                <li><?php esc_html_e( 'Tombol sinkronisasi manual di dashboard', 'silverbene-api-integration' ); ?></li>
+                <li><?php esc_html_e( 'Pengaturan penyesuaian harga (persentase atau nominal tetap)', 'silverbene-api-integration' ); ?></li>
+                <li><?php esc_html_e( 'Pengiriman pesanan WooCommerce ke Silverbene otomatis', 'silverbene-api-integration' ); ?></li>
+                <li><?php esc_html_e( 'Penjadwalan cron fleksibel (15 menit, setiap jam, dua kali sehari, harian)', 'silverbene-api-integration' ); ?></li>
+            </ul>
+
+            <h2><?php esc_html_e( 'Cara Konfigurasi', 'silverbene-api-integration' ); ?></h2>
+            <table>
+                <tr>
+                    <th><?php esc_html_e( 'Langkah', 'silverbene-api-integration' ); ?></th>
+                    <th><?php esc_html_e( 'Deskripsi', 'silverbene-api-integration' ); ?></th>
+                </tr>
+                <tr>
+                    <td>1</td>
+                    <td><?php esc_html_e( 'Masukkan URL API Silverbene (contoh: https://s.silverbene.com/api)', 'silverbene-api-integration' ); ?></td>
+                </tr>
+                <tr>
+                    <td>2</td>
+                    <td><?php esc_html_e( 'Masukkan API Key yang didapat dari dashboard Silverbene', 'silverbene-api-integration' ); ?></td>
+                </tr>
+                <tr>
+                    <td>3</td>
+                    <td><?php esc_html_e( 'Aktifkan sinkronisasi otomatis dan pilih interval yang diinginkan', 'silverbene-api-integration' ); ?></td>
+                </tr>
+                <tr>
+                    <td>4</td>
+                    <td><?php esc_html_e( 'Atur kategori default dan penyesuaian harga (opsional)', 'silverbene-api-integration' ); ?></td>
+                </tr>
+                <tr>
+                    <td>5</td>
+                    <td><?php esc_html_e( 'Klik "Save Changes" dan lakukan sinkronisasi manual pertama', 'silverbene-api-integration' ); ?></td>
+                </tr>
+            </table>
+
+            <h2><?php esc_html_e( 'Sinkronisasi Pesanan', 'silverbene-api-integration' ); ?></h2>
+            <p><?php esc_html_e( 'Pesanan WooCommerce akan dikirim ke Silverbene secara otomatis ketika status berubah menjadi:', 'silverbene-api-integration' ); ?></p>
+            <ul>
+                <li><code>processing</code> - <?php esc_html_e( 'Sedang Diproses', 'silverbene-api-integration' ); ?></li>
+                <li><code>completed</code> - <?php esc_html_e( 'Selesai', 'silverbene-api-integration' ); ?></li>
+            </ul>
+
+            <h2><?php esc_html_e( 'Troubleshooting', 'silverbene-api-integration' ); ?></h2>
+            <table>
+                <tr>
+                    <th><?php esc_html_e( 'Masalah', 'silverbene-api-integration' ); ?></th>
+                    <th><?php esc_html_e( 'Solusi', 'silverbene-api-integration' ); ?></th>
+                </tr>
+                <tr>
+                    <td><?php esc_html_e( 'Produk tidak muncul', 'silverbene-api-integration' ); ?></td>
+                    <td><?php esc_html_e( 'Cek API Key dan endpoint di pengaturan. Pastikan produk memiliki stok.', 'silverbene-api-integration' ); ?></td>
+                </tr>
+                <tr>
+                    <td><?php esc_html_e( 'Sinkronisasi gagal', 'silverbene-api-integration' ); ?></td>
+                    <td><?php esc_html_e( 'Cek log di WooCommerce → Status → Logs (sumber: silverbene-api-sync)', 'silverbene-api-integration' ); ?></td>
+                </tr>
+                <tr>
+                    <td><?php esc_html_e( 'Cron tidak berjalan', 'silverbene-api-integration' ); ?></td>
+                    <td><?php esc_html_e( 'Pastikan WP-Cron aktif atau gunakan sistem cron server.', 'silverbene-api-integration' ); ?></td>
+                </tr>
+                <tr>
+                    <td><?php esc_html_e( 'Timeout saat sinkronisasi', 'silverbene-api-integration' ); ?></td>
+                    <td><?php esc_html_e( 'Gunakan tanggal mulai yang lebih dekat untuk mengurangi jumlah produk.', 'silverbene-api-integration' ); ?></td>
+                </tr>
+            </table>
+
+            <h2><?php esc_html_e( 'Informasi Teknis', 'silverbene-api-integration' ); ?></h2>
+            <table>
+                <tr>
+                    <th><?php esc_html_e( 'Item', 'silverbene-api-integration' ); ?></th>
+                    <th><?php esc_html_e( 'Nilai', 'silverbene-api-integration' ); ?></th>
+                </tr>
+                <tr>
+                    <td><?php esc_html_e( 'Versi Plugin', 'silverbene-api-integration' ); ?></td>
+                    <td><code><?php echo esc_html( defined( 'SILVERBENE_API_VERSION' ) ? SILVERBENE_API_VERSION : '1.0.0' ); ?></code></td>
+                </tr>
+                <tr>
+                    <td><?php esc_html_e( 'Versi PHP', 'silverbene-api-integration' ); ?></td>
+                    <td><code><?php echo esc_html( PHP_VERSION ); ?></code></td>
+                </tr>
+                <tr>
+                    <td><?php esc_html_e( 'Versi WordPress', 'silverbene-api-integration' ); ?></td>
+                    <td><code><?php echo esc_html( get_bloginfo( 'version' ) ); ?></code></td>
+                </tr>
+                <tr>
+                    <td><?php esc_html_e( 'Versi WooCommerce', 'silverbene-api-integration' ); ?></td>
+                    <td><code><?php echo esc_html( defined( 'WC_VERSION' ) ? WC_VERSION : '-' ); ?></code></td>
+                </tr>
+                <tr>
+                    <td><?php esc_html_e( 'Memory Limit', 'silverbene-api-integration' ); ?></td>
+                    <td><code><?php echo esc_html( ini_get( 'memory_limit' ) ); ?></code></td>
+                </tr>
+                <tr>
+                    <td><?php esc_html_e( 'Max Execution Time', 'silverbene-api-integration' ); ?></td>
+                    <td><code><?php echo esc_html( ini_get( 'max_execution_time' ) ); ?>s</code></td>
+                </tr>
+            </table>
         </div>
         <?php
     }
@@ -541,17 +726,22 @@ class Silverbene_API {
 
         $timestamp = wp_next_scheduled( 'silverbene_api_sync_products' );
 
-        if ( $enabled ) {
+        if ( ! $enabled ) {
             if ( $timestamp ) {
                 wp_unschedule_event( $timestamp, 'silverbene_api_sync_products' );
             }
-
-            wp_schedule_event( time(), $interval, 'silverbene_api_sync_products' );
-        } else {
-            if ( $timestamp ) {
-                wp_unschedule_event( $timestamp, 'silverbene_api_sync_products' );
-            }
+            return;
         }
+
+        if ( $timestamp ) {
+            $current_schedule = wp_get_schedule( 'silverbene_api_sync_products' );
+            if ( $current_schedule === $interval ) {
+                return;
+            }
+            wp_unschedule_event( $timestamp, 'silverbene_api_sync_products' );
+        }
+
+        wp_schedule_event( time(), $interval, 'silverbene_api_sync_products' );
     }
 
     /**

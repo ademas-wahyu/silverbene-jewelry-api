@@ -7,6 +7,7 @@ class Silverbene_Sync
     private const ADMIN_NOTICE_TRANSIENT = "silverbene_sync_admin_notice";
     private const COLOR_ATTRIBUTE_NAME = "Color";
     private const VARIATION_ATTRIBUTE_NAME = "Variant Color";
+    private const MEMORY_LIMIT_THRESHOLD = 0.85;
 
     /**
      * API client instance.
@@ -245,6 +246,26 @@ class Silverbene_Sync
                 if ($product_id) {
                     $imported++;
                 }
+            }
+
+            if ($this->is_memory_critical()) {
+                if ($logger) {
+                    $logger->warning(
+                        sprintf(
+                            "Sinkronisasi dihentikan sementara karena memory mendekati limit. Produk diproses: %d",
+                            $imported
+                        ),
+                        $context
+                    );
+                }
+                break;
+            }
+
+            if (function_exists('wp_cache_flush')) {
+                wp_cache_flush();
+            }
+            if (function_exists('gc_collect_cycles')) {
+                gc_collect_cycles();
             }
 
             $page++;
@@ -2202,5 +2223,36 @@ class Silverbene_Sync
                 "context" => $context,
             ]);
         }
+    }
+
+    private function is_memory_critical()
+    {
+        $memory_limit = ini_get('memory_limit');
+        if ('-1' === $memory_limit) {
+            return false;
+        }
+
+        $limit_bytes = $this->convert_to_bytes($memory_limit);
+        $usage = memory_get_usage(true);
+
+        return ($usage / $limit_bytes) >= self::MEMORY_LIMIT_THRESHOLD;
+    }
+
+    private function convert_to_bytes($value)
+    {
+        $value = trim($value);
+        $last = strtolower(substr($value, -1));
+        $value = (int) $value;
+
+        switch ($last) {
+            case 'g':
+                $value *= 1024;
+            case 'm':
+                $value *= 1024;
+            case 'k':
+                $value *= 1024;
+        }
+
+        return $value;
     }
 }

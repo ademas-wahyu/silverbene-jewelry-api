@@ -1,2 +1,71 @@
+# Dependencies
 /vendor/
+vendor/
+node_modules/
+
+# Composer
+composer.lock
+composer.phar
+
+# PHPUnit
 /.phpunit.result.cache
+.phpunit.result.cache
+.phpunit.cache/
+phpunit.xml
+
+# IDE & Editor
+.idea/
+.vscode/
+*.sublime-project
+*.sublime-workspace
+.project
+.settings/
+*.swp
+*.swo
+*~
+
+# OS Files
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+
+# Build & Archives
+*.zip
+*.tar.gz
+*.rar
+*.7z
+
+# Logs
+*.log
+debug.log
+error.log
+
+# Environment
+.env
+.env.local
+.env.*.local
+
+# Cache
+*.cache
+.cache/
+
+# Temporary files
+*.tmp
+*.temp
+/tmp/
+temp/
+
+# Large files
+*.sql
+*.sql.gz
+*.bak
+
+# WordPress specific
+wp-config.php
+wp-content/uploads/
+wp-content/upgrade/
+wp-content/cache/
