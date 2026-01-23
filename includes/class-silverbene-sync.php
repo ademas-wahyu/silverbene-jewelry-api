@@ -3,7 +3,7 @@ class Silverbene_Sync
 {
     private const LAST_SYNC_STATUS_OPTION = "silverbene_last_sync_status";
     private const LAST_SUCCESSFUL_SYNC_OPTION = "silverbene_last_sync_timestamp";
-    private const DEFAULT_SYNC_LOOKBACK_DAYS = 30;
+    private const DEFAULT_SYNC_LOOKBACK_DAYS = 365;
     private const ADMIN_NOTICE_TRANSIENT = "silverbene_sync_admin_notice";
     private const COLOR_ATTRIBUTE_NAME = "Color";
     private const VARIATION_ATTRIBUTE_NAME = "Variant Color";
@@ -39,6 +39,9 @@ class Silverbene_Sync
             return false;
         }
 
+        // FORCE DEBUG LOG
+        file_put_contents(dirname(__FILE__) . '/../../../../wp-content/uploads/debug_start.txt', "Sync started at " . date('Y-m-d H:i:s') . "\n", FILE_APPEND);
+
         $settings = $this->client->get_settings();
         if (!$force && empty($settings["sync_enabled"])) {
             return true;
@@ -57,6 +60,15 @@ class Silverbene_Sync
         $sync_failed = false;
         $failure_message = "";
 
+        // Fix: One-time reset of sync timestamp to ensure start_date setting is respected
+        // Bumped to v2 to force another reset since user reported issue persists
+        if (!get_option('silverbene_state_reset_v2')) {
+            if (function_exists("delete_option") && function_exists("update_option")) {
+                delete_option(self::LAST_SUCCESSFUL_SYNC_OPTION);
+                update_option('silverbene_state_reset_v2', true);
+            }
+        }
+
         $last_successful_sync_timestamp = 0;
         if (function_exists("get_option")) {
             $stored_timestamp = get_option(self::LAST_SUCCESSFUL_SYNC_OPTION);
@@ -66,31 +78,46 @@ class Silverbene_Sync
             }
         }
 
+        // DEBUG: Trace date calculation
+        $debug_log = [
+            'original_last_sync' => $last_successful_sync_timestamp,
+            'settings_start_date' => isset($settings["sync_start_date"]) ? $settings["sync_start_date"] : 'not set',
+        ];
+
         $lookback_seconds = (defined("DAY_IN_SECONDS") ? DAY_IN_SECONDS : 86400) * self::DEFAULT_SYNC_LOOKBACK_DAYS;
         $fallback_timestamp = max(time() - $lookback_seconds, 0);
 
         $minimum_start_timestamp = 0;
         if (!empty($settings["sync_start_date"])) {
+            // Try standard strtotime first
             $parsed_timestamp = strtotime($settings["sync_start_date"]);
+
+            // If that fails or looks weird (future), try d/m/Y format explicitly commonly used in datepickers
+            if (false === $parsed_timestamp || $parsed_timestamp > time()) {
+                $dt = DateTime::createFromFormat('d/m/Y', $settings["sync_start_date"]);
+                if ($dt) {
+                    $parsed_timestamp = $dt->getTimestamp();
+                }
+            }
+
+            // Also try Y-m-d just in case
+            if (false === $parsed_timestamp) {
+                $dt = DateTime::createFromFormat('Y-m-d', $settings["sync_start_date"]);
+                if ($dt) {
+                    $parsed_timestamp = $dt->getTimestamp();
+                }
+            }
 
             if (false !== $parsed_timestamp) {
                 $minimum_start_timestamp = min($parsed_timestamp, time());
             }
+            $debug_log['parsed_timestamp'] = $parsed_timestamp;
+            $debug_log['minimum_start_timestamp'] = $minimum_start_timestamp;
         }
 
         if ($last_successful_sync_timestamp <= 0) {
             if ($minimum_start_timestamp > 0) {
                 $last_successful_sync_timestamp = $minimum_start_timestamp;
-
-                if ($logger) {
-                    $logger->info(
-                        sprintf(
-                            "Menggunakan tanggal awal sinkronisasi %s berdasarkan pengaturan.",
-                            gmdate("Y-m-d", $minimum_start_timestamp)
-                        ),
-                        $context,
-                    );
-                }
             } else {
                 $last_successful_sync_timestamp = $fallback_timestamp;
             }
@@ -101,12 +128,26 @@ class Silverbene_Sync
             );
         }
 
+        $debug_log['final_timestamp'] = $last_successful_sync_timestamp;
+        file_put_contents(WP_CONTENT_DIR . '/uploads/silverbene_debug_date.log', print_r($debug_log, true) . "\n", FILE_APPEND);
+
         $start_date_value = max($last_successful_sync_timestamp, 0);
         $start_date_value = min($start_date_value, time());
 
-        $start_date = function_exists("wp_date")
-            ? wp_date("Y-m-d", $start_date_value)
-            : gmdate("Y-m-d", $start_date_value);
+        $current_date_func = function_exists("wp_date") ? "wp_date" : "date";
+        $start_date = $current_date_func("Y-m-d", $start_date_value);
+
+        if ($logger) {
+            $logger->info(
+                sprintf(
+                    "Akan mengambil produk dari tanggal: %s (timestamp: %d) sampai %s",
+                    $start_date,
+                    $start_date_value,
+                    wp_date("Y-m-d")
+                ),
+                $context
+            );
+        }
 
         do {
             /**
@@ -117,13 +158,32 @@ class Silverbene_Sync
              */
             // $start_date = wp_date( 'Y-m-d', strtotime( '-1 year' ) );
 
+            // HARD DEBUG: Override start date and params
+            $start_date = '2023-01-01'; // Force 2023
+            error_log("Silverbene Sync [DEBUG]: Force start date to $start_date");
+
             $products = $this->client->get_products([
                 "page" => $page,
                 "per_page" => $per_page,
-                "is_really_stock" => 1,
+                //"is_really_stock" => 1, // DEBUG: Commented out to see all products
                 "start_date" => $start_date,
                 "end_date" => wp_date("Y-m-d"),
             ]);
+
+            error_log("Silverbene Sync [DEBUG]: Products fetched count: " . (is_array($products) ? count($products) : 'Error'));
+
+            if ($logger) {
+                $logger->info(
+                    sprintf(
+                        'Request API: page=%d, per_page=%d, start_date=%s, end_date=%s',
+                        $page,
+                        $per_page,
+                        $start_date,
+                        wp_date("Y-m-d")
+                    ),
+                    $context
+                );
+            }
 
             if (is_wp_error($products)) {
                 $error_message = $products->get_error_message();
@@ -136,10 +196,40 @@ class Silverbene_Sync
             }
 
             if (empty($products)) {
+                if ($logger) {
+                    $logger->info(
+                        sprintf(
+                            'API mengembalikan 0 produk pada page %d. Stop sync.',
+                            $page
+                        ),
+                        $context
+                    );
+                }
                 break;
             }
 
+            if ($logger && $page === 1) {
+                $logger->info(
+                    sprintf(
+                        'API mengembalikan %d produk pada page %d',
+                        count($products),
+                        $page
+                    ),
+                    $context
+                );
+            }
+
             $grouped_products = $this->group_products_by_parent($products);
+
+            if ($logger && $page === 1) {
+                $logger->info(
+                    sprintf(
+                        'Setelah grouping: %d produk parent akan diproses',
+                        count($grouped_products)
+                    ),
+                    $context
+                );
+            }
 
             foreach ($grouped_products as $product_data) {
                 $total_stock = $this->get_total_stock($product_data);
@@ -155,6 +245,17 @@ class Silverbene_Sync
                         ],
                         "",
                     );
+
+                    if ($logger && !empty($sku)) {
+                        $logger->debug(
+                            sprintf(
+                                'Produk SKU %s diskip karena stok = %d',
+                                $sku,
+                                $total_stock
+                            ),
+                            $context
+                        );
+                    }
 
                     if (!empty($sku)) {
                         $existing_product_id = wc_get_product_id_by_sku($sku);
@@ -875,8 +976,8 @@ class Silverbene_Sync
         );
         $product->set_status(
             in_array($status, ["draft", "pending", "private", "publish"], true)
-                ? $status
-                : "publish",
+            ? $status
+            : "publish",
         );
 
         $product_id = $product->save();
@@ -978,13 +1079,32 @@ class Silverbene_Sync
             $markup_value = null !== $above_markup ? $above_markup : $default_markup;
         }
 
+        $original_subtotal = $subtotal;
         if ("percentage" === $type) {
             $subtotal += $subtotal * ($markup_value / 100);
         } elseif ("fixed" === $type) {
             $subtotal += $markup_value;
         }
 
-        return max($subtotal, 0);
+        $final_price = max($subtotal, 0);
+
+        if (function_exists('wc_get_logger')) {
+            $logger = wc_get_logger();
+            $logger->debug(
+                sprintf(
+                    'apply_markup: Base=%s, Shipping=%s, Type=%s, Markup=%s, Subtotal=%s, Final=%s',
+                    $base_price,
+                    $shipping_fee,
+                    $type,
+                    $markup_value,
+                    $original_subtotal,
+                    $final_price
+                ),
+                ['source' => 'silverbene-api-sync']
+            );
+        }
+
+        return $final_price;
     }
 
     /**
@@ -1405,8 +1525,32 @@ class Silverbene_Sync
                 $variation->set_regular_price($price);
                 $variation->set_price($price);
 
+                if (function_exists('wc_get_logger')) {
+                    $logger = wc_get_logger();
+                    $logger->info(
+                        sprintf(
+                            'Menyimpan harga ke variasi SKU %s: %s (formatted: %s)',
+                            !empty($variation_data["sku"]) ? $variation_data["sku"] : 'N/A',
+                            $variation_data["price"],
+                            $price
+                        ),
+                        ['source' => 'silverbene-api-sync']
+                    );
+                }
+
                 if (null === $min_price || $variation_data["price"] < $min_price) {
                     $min_price = $variation_data["price"];
+                }
+            } else {
+                if (function_exists('wc_get_logger')) {
+                    $logger = wc_get_logger();
+                    $logger->warning(
+                        sprintf(
+                            'Variasi SKU %s tidak memiliki harga untuk disimpan',
+                            !empty($variation_data["sku"]) ? $variation_data["sku"] : 'N/A'
+                        ),
+                        ['source' => 'silverbene-api-sync']
+                    );
                 }
             }
 
@@ -1614,10 +1758,39 @@ class Silverbene_Sync
 
             if (null !== $raw_price) {
                 $variation_price = $this->apply_markup($raw_price, $settings);
+                if (function_exists('wc_get_logger')) {
+                    $logger = wc_get_logger();
+                    $logger->debug(
+                        sprintf(
+                            'Variasi - Harga asli: %s, Harga setelah markup: %s',
+                            $raw_price,
+                            $variation_price
+                        ),
+                        ['source' => 'silverbene-api-sync']
+                    );
+                }
             } elseif (null !== $fallback_price) {
                 $variation_price = $this->apply_markup($fallback_price, $settings);
+                if (function_exists('wc_get_logger')) {
+                    $logger = wc_get_logger();
+                    $logger->debug(
+                        sprintf(
+                            'Variasi (fallback) - Harga asli: %s, Harga setelah markup: %s',
+                            $fallback_price,
+                            $variation_price
+                        ),
+                        ['source' => 'silverbene-api-sync']
+                    );
+                }
             } else {
                 $variation_price = null;
+                if (function_exists('wc_get_logger')) {
+                    $logger = wc_get_logger();
+                    $logger->warning(
+                        'Variasi tidak memiliki harga (raw_price dan fallback_price null)',
+                        ['source' => 'silverbene-api-sync']
+                    );
+                }
             }
 
             $raw_stock = $this->extract_value(

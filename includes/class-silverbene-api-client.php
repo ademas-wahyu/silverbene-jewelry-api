@@ -41,15 +41,48 @@ class Silverbene_API_Client
 
         $endpoint = $this->determine_products_endpoint($args);
 
+        if (function_exists('wc_get_logger')) {
+            $logger = wc_get_logger();
+            $safe_query_args = $query_args;
+            if (isset($safe_query_args['token'])) {
+                $safe_query_args['token'] = substr($safe_query_args['token'], 0, 8) . '...';
+            }
+            $logger->debug(
+                sprintf(
+                    'API Request: %s dengan parameter: %s',
+                    $endpoint,
+                    wp_json_encode($safe_query_args)
+                ),
+                ['source' => 'silverbene-api-sync']
+            );
+        }
+
         $response = $this->request("GET", $endpoint, [
             "query" => $query_args,
         ]);
 
         if (is_wp_error($response)) {
+            if (function_exists('wc_get_logger')) {
+                $logger = wc_get_logger();
+                $logger->error(
+                    sprintf(
+                        'API Error: %s',
+                        $response->get_error_message()
+                    ),
+                    ['source' => 'silverbene-api-sync']
+                );
+            }
             return $response;
         }
 
         if (empty($response)) {
+            if (function_exists('wc_get_logger')) {
+                $logger = wc_get_logger();
+                $logger->warning(
+                    'API mengembalikan response kosong',
+                    ['source' => 'silverbene-api-sync']
+                );
+            }
             return [];
         }
 
@@ -59,13 +92,45 @@ class Silverbene_API_Client
                 "Product request returned non zero status code",
                 $response,
             );
+            if (function_exists('wc_get_logger')) {
+                $logger = wc_get_logger();
+                $logger->error(
+                    sprintf(
+                        'API mengembalikan error code: %s, message: %s',
+                        $response["code"],
+                        $error_message
+                    ),
+                    ['source' => 'silverbene-api-sync']
+                );
+            }
             return new WP_Error('silverbene_api_error', $error_message, $response);
         }
 
         $products = $this->normalize_products_response($response);
 
         if (empty($products)) {
+            if (function_exists('wc_get_logger')) {
+                $logger = wc_get_logger();
+                $logger->info(
+                    sprintf(
+                        'API response tidak mengandung produk. Response structure: %s',
+                        wp_json_encode(array_keys($response))
+                    ),
+                    ['source' => 'silverbene-api-sync']
+                );
+            }
             return [];
+        }
+
+        if (function_exists('wc_get_logger')) {
+            $logger = wc_get_logger();
+            $logger->debug(
+                sprintf(
+                    'normalize_products_response mengembalikan %d produk',
+                    count($products)
+                ),
+                ['source' => 'silverbene-api-sync']
+            );
         }
 
         return $this->maybe_enrich_with_option_quantities($products);
