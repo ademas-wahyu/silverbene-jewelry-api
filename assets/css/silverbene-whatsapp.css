@@ -1,0 +1,158 @@
+/**
+ * Silverbene WhatsApp Button Styles
+ *
+ * @package Silverbene_API_Integration
+ * @since 1.2.0
+ */
+
+/* WhatsApp Button Wrapper */
+.silverbene-whatsapp-wrapper {
+  margin: 15px 0;
+  display: block;
+  width: 100%;
+}
+
+/* WhatsApp Button */
+.silverbene-whatsapp-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  background-color: #25d366;
+  color: #ffffff !important;
+  padding: 14px 28px;
+  border-radius: 6px;
+  font-size: 16px;
+  font-weight: 600;
+  text-decoration: none !important;
+  transition: all 0.3s ease;
+  border: none;
+  cursor: pointer;
+  box-shadow: 0 4px 14px rgba(37, 211, 102, 0.35);
+  width: 100%;
+  max-width: 320px;
+  text-align: center;
+}
+
+.silverbene-whatsapp-button:hover {
+  background-color: #1da851;
+  color: #ffffff !important;
+  transform: translateY(-2px);
+  box-shadow: 0 6px 20px rgba(37, 211, 102, 0.45);
+  text-decoration: none !important;
+}
+
+.silverbene-whatsapp-button:active {
+  transform: translateY(0);
+  box-shadow: 0 2px 10px rgba(37, 211, 102, 0.3);
+}
+
+.silverbene-whatsapp-button:focus {
+  outline: 2px solid #128c7e;
+  outline-offset: 2px;
+}
+
+/* WhatsApp Icon */
+.silverbene-whatsapp-icon {
+  flex-shrink: 0;
+  width: 22px;
+  height: 22px;
+}
+
+/* Button Text */
+.silverbene-whatsapp-button span {
+  white-space: nowrap;
+}
+
+/* Disabled State for Variable Products */
+.silverbene-whatsapp-button.disabled {
+  background-color: #cccccc;
+  cursor: not-allowed;
+  box-shadow: none;
+  pointer-events: none;
+}
+
+.silverbene-whatsapp-button.disabled:hover {
+  transform: none;
+  background-color: #cccccc;
+}
+
+/* Loading State */
+.silverbene-whatsapp-button.loading {
+  position: relative;
+  color: transparent !important;
+}
+
+.silverbene-whatsapp-button.loading::after {
+  content: "";
+  position: absolute;
+  width: 20px;
+  height: 20px;
+  border: 2px solid #ffffff;
+  border-top-color: transparent;
+  border-radius: 50%;
+  animation: silverbene-spin 0.8s linear infinite;
+}
+
+@keyframes silverbene-spin {
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+/* Responsive Styles */
+@media (max-width: 768px) {
+  .silverbene-whatsapp-button {
+    max-width: 100%;
+    padding: 12px 20px;
+    font-size: 15px;
+  }
+
+  .silverbene-whatsapp-icon {
+    width: 20px;
+    height: 20px;
+  }
+}
+
+@media (max-width: 480px) {
+  .silverbene-whatsapp-button {
+    padding: 12px 16px;
+    font-size: 14px;
+    gap: 8px;
+  }
+
+  .silverbene-whatsapp-icon {
+    width: 18px;
+    height: 18px;
+  }
+}
+
+/* Dark Mode Support */
+@media (prefers-color-scheme: dark) {
+  .silverbene-whatsapp-button {
+    box-shadow: 0 4px 14px rgba(37, 211, 102, 0.25);
+  }
+
+  .silverbene-whatsapp-button:hover {
+    box-shadow: 0 6px 20px rgba(37, 211, 102, 0.35);
+  }
+}
+
+/* Animation for button appearance */
+.silverbene-whatsapp-wrapper {
+  animation: silverbene-fadeIn 0.3s ease-out;
+}
+
+@keyframes silverbene-fadeIn {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
