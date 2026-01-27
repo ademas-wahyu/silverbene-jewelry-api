@@ -34,6 +34,7 @@ ehthumbs.db
 Thumbs.db
 
 # Build & Archives
+/dist/
 *.zip
 *.tar.gz
 *.rar
