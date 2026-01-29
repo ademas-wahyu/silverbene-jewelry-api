@@ -162,6 +162,10 @@ The plugin includes PHPUnit tests for:
 
 ## Changelog
 
+### v1.2.0 (2026-01-29)
+
+- **Fixed:** Removed hardcoded `start_date` override so sync respects configured start date and last successful sync.
+
 ### v1.1.0 (2026-01-06)
 
 - **Fixed:** API timeout reduced from 300s to 60s
