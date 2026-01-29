@@ -158,10 +158,6 @@ class Silverbene_Sync
              */
             // $start_date = wp_date( 'Y-m-d', strtotime( '-1 year' ) );
 
-            // HARD DEBUG: Override start date and params
-            $start_date = '2023-01-01'; // Force 2023
-            error_log("Silverbene Sync [DEBUG]: Force start date to $start_date");
-
             $products = $this->client->get_products([
                 "page" => $page,
                 "per_page" => $per_page,
