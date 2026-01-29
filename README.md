@@ -162,6 +162,10 @@ The plugin includes PHPUnit tests for:
 
 ## Changelog
 
+### v1.2.2 (2026-01-29)
+
+- **Fixed:** Restored default `manage_options` capability so the menu is visible to admins without extra permissions.
+
 ### v1.2.1 (2026-01-29)
 
 - **New:** Added `silverbene_api_manage_capability` filter so access can be granted via Members plugin.
