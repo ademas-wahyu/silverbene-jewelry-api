@@ -162,6 +162,10 @@ The plugin includes PHPUnit tests for:
 
 ## Changelog
 
+### v1.2.1 (2026-01-29)
+
+- **New:** Added `silverbene_api_manage_capability` filter so access can be granted via Members plugin.
+
 ### v1.2.0 (2026-01-29)
 
 - **Fixed:** Removed hardcoded `start_date` override so sync respects configured start date and last successful sync.

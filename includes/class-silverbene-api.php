@@ -41,6 +41,22 @@ class Silverbene_API
     }
 
     /**
+     * Get capability required to manage Silverbene settings.
+     *
+     * @return string
+     */
+    private function get_manage_capability()
+    {
+        $capability = apply_filters('silverbene_api_manage_capability', 'manage_options');
+
+        if (!is_string($capability) || '' === $capability) {
+            return 'manage_options';
+        }
+
+        return $capability;
+    }
+
+    /**
      * Register admin menu page.
      */
     public function add_admin_menu()
@@ -48,7 +64,7 @@ class Silverbene_API
         add_menu_page(
             __('Silverbene API', 'silverbene-api-integration'),
             __('Silverbene API', 'silverbene-api-integration'),
-            'manage_options',
+            $this->get_manage_capability(),
             'silverbene-api',
             array($this, 'render_settings_page'),
             'dashicons-cart'
@@ -509,7 +525,7 @@ class Silverbene_API
      */
     public function render_settings_page()
     {
-        if (!current_user_can('manage_options')) {
+        if (!current_user_can($this->get_manage_capability())) {
             return;
         }
 
@@ -786,7 +802,7 @@ class Silverbene_API
      */
     public function handle_manual_sync()
     {
-        if (!current_user_can('manage_options')) {
+        if (!current_user_can($this->get_manage_capability())) {
             wp_die(__('Anda tidak memiliki izin untuk melakukan tindakan ini.', 'silverbene-api-integration'));
         }
 

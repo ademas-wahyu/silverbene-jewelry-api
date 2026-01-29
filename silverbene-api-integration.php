@@ -2,7 +2,7 @@
 /**
  * Plugin Name: Silverbene API Integration
  * Description: Integrasi API Silverbene untuk sinkronisasi produk dan pesanan WooCommerce secara otomatis.
- * Version: 1.2.0
+ * Version: 1.2.1
  * Author: Wahyu (Vodeco Dev Core)
  * Text Domain: silverbene-api-integration
  */
@@ -15,7 +15,7 @@ if (!defined('ABSPATH')) {
 // Menentukan path plugin
 define('SILVERBENE_API_PLUGIN_PATH', plugin_dir_path(__FILE__));
 
-define('SILVERBENE_API_VERSION', '1.2.0');
+define('SILVERBENE_API_VERSION', '1.2.1');
 
 define('SILVERBENE_API_SETTINGS_OPTION', 'silverbene_api_settings');
 
